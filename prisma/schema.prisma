@@ -1,0 +1,361 @@
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PRISMA SCHEMA — Tienda Digital Minecraft + Motor Forense
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── ENUMS ──────────────────────────────────────────────────
+
+enum ProductCategory {
+  configurations
+  source_code
+  maps
+  plugins
+}
+
+enum OrderStatus {
+  pending
+  paid
+  confirmed
+  refunded
+  disputed
+  revoked
+  frozen
+}
+
+enum DeliveryStageType {
+  preview
+  full
+}
+
+enum DeliveryStageStatus {
+  pending
+  ready
+  delivered
+  revoked
+}
+
+enum LicenseStatus {
+  active
+  revoked
+  expired
+}
+
+// ── PRODUCTS ───────────────────────────────────────────────
+
+model Product {
+  id                  String           @id @default(uuid())
+  slug                String           @unique @db.VarChar(255)
+  name                String           @db.VarChar(500)
+  shortDescription    String?          @map("short_description") @db.VarChar(1000)
+  description         String           @db.Text
+  category            ProductCategory
+  priceUsd            Decimal          @map("price_usd") @db.Decimal(10, 2)
+  metadata            Json             @default("{}") // {mc_versions, platforms, tags, changelog}
+  videoUrl            String?          @map("video_url") @db.VarChar(500)
+  isActive            Boolean          @default(true) @map("is_active")
+  downloadLimit       Int              @default(3) @map("download_limit")
+  downloadExpiresDays Int              @default(7) @map("download_expires_days")
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  files  ProductFile[]
+  images ProductImage[]
+  orders Order[]
+  licenses License[]
+
+  @@index([category])
+  @@index([slug])
+  @@map("products")
+}
+
+model ProductFile {
+  id         String   @id @default(uuid())
+  productId  String   @map("product_id")
+  filename   String   @db.VarChar(500)
+  storageKey String   @map("storage_key") @db.VarChar(1000)
+  fileSize   BigInt   @map("file_size")
+  sha256Hash String   @map("sha256_hash") @db.VarChar(64)
+  mimeType   String   @map("mime_type") @db.VarChar(100)
+  sortOrder  Int      @default(0) @map("sort_order")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_files")
+}
+
+model ProductImage {
+  id         String   @id @default(uuid())
+  productId  String   @map("product_id")
+  storageKey String   @map("storage_key") @db.VarChar(1000)
+  altText    String?  @map("alt_text") @db.VarChar(500)
+  sortOrder  Int      @default(0) @map("sort_order")
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+// ── TERMS ──────────────────────────────────────────────────
+
+model TermsVersion {
+  id           String   @id @default(uuid())
+  versionLabel String   @map("version_label") @db.VarChar(50)
+  content      String   @db.Text
+  contentHash  String   @map("content_hash") @db.VarChar(64)
+  isActive     Boolean  @default(false) @map("is_active")
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  orders Order[]
+
+  @@map("terms_versions")
+}
+
+// ── ORDERS ─────────────────────────────────────────────────
+
+model Order {
+  id                        String      @id @default(uuid())
+  orderNumber               String      @unique @map("order_number") @db.VarChar(20)
+  productId                 String      @map("product_id")
+  productSnapshot           Json        @map("product_snapshot") // Immutable JSON copy of product at purchase time
+  buyerName                 String      @default("") @map("buyer_name") @db.VarChar(300)
+  buyerEmail                String      @map("buyer_email") @db.VarChar(500)
+  buyerIp                   String      @map("buyer_ip") @db.VarChar(45)
+  buyerUserAgent            String?     @map("buyer_user_agent") @db.Text
+  buyerCountry              String?     @map("buyer_country") @db.VarChar(100)
+  buyerCity                 String?     @map("buyer_city") @db.VarChar(200)
+  amountUsd                 Decimal     @map("amount_usd") @db.Decimal(10, 2)
+  currency                  String      @default("USD") @db.VarChar(3)
+  status                    OrderStatus @default(pending)
+
+  // PayPal fields
+  paypalOrderId             String?     @map("paypal_order_id") @db.VarChar(100)
+  paypalCaptureId           String?     @map("paypal_capture_id") @db.VarChar(100)
+  paypalPayerId             String?     @map("paypal_payer_id") @db.VarChar(100)
+  paypalPayerName           String?     @map("paypal_payer_name") @db.VarChar(300)
+  paypalPayerEmail          String?     @map("paypal_payer_email") @db.VarChar(500)
+  paypalStatus              String?     @map("paypal_status") @db.VarChar(50)
+  paypalRawCapture          Json?       @map("paypal_raw_capture")
+  paypalWebhookReceivedAt   DateTime?   @map("paypal_webhook_received_at") @db.Timestamptz
+
+  // Download control
+  downloadLimit             Int         @map("download_limit")
+  downloadCount             Int         @default(0) @map("download_count")
+  downloadsExpireAt         DateTime?   @map("downloads_expire_at") @db.Timestamptz
+  downloadsRevoked          Boolean     @default(false) @map("downloads_revoked")
+
+  // Terms acceptance
+  termsVersionId            String      @map("terms_version_id")
+  termsAcceptedAt           DateTime    @map("terms_accepted_at") @db.Timestamptz
+  termsAcceptedIp           String      @map("terms_accepted_ip") @db.VarChar(45)
+  termsAcceptedUa           String?     @map("terms_accepted_ua") @db.Text
+
+  // Delivery package
+  deliveryPackageKey        String?     @map("delivery_package_key") @db.VarChar(1000)
+  deliveryPackageHash       String?     @map("delivery_package_hash") @db.VarChar(64)
+  deliveryPackageGeneratedAt DateTime?  @map("delivery_package_generated_at") @db.Timestamptz
+
+  // Privacy: encrypted buyer IP stored separately, raw IP for masked display
+  buyerIpEncrypted          Bytes?      @map("buyer_ip_encrypted") // AES-256-GCM encrypted raw IP
+  termsAcceptedIpEncrypted  Bytes?      @map("terms_accepted_ip_encrypted") // AES-256-GCM encrypted raw IP
+
+  // Dispute mode (J)
+  evidenceFrozenAt          DateTime?   @map("evidence_frozen_at") @db.Timestamptz
+  evidenceFrozenByAdmin     String?     @map("evidence_frozen_by_admin") @db.VarChar(500)
+  frozenEvidencePdfKey      String?     @map("frozen_evidence_pdf_key") @db.VarChar(1000)
+
+  // Data retention
+  retentionExpiresAt        DateTime?   @map("retention_expires_at") @db.Timestamptz // default: created_at + 540 days
+
+  createdAt                 DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  product        Product          @relation(fields: [productId], references: [id])
+  termsVersion   TermsVersion     @relation(fields: [termsVersionId], references: [id])
+  events         OrderEvent[]
+  downloadTokens DownloadToken[]
+  license        License?
+  snapshots      OrderSnapshot[]
+  deliveryStages DeliveryStage[]
+
+  @@index([buyerEmail])
+  @@index([paypalOrderId])
+  @@index([paypalCaptureId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+// ── ORDER EVENTS (APPEND-ONLY, TAMPER-EVIDENT CHAIN) ────────
+
+model OrderEvent {
+  id             String   @id @default(uuid())
+  orderId        String   @map("order_id")
+  sequenceNumber Int      @map("sequence_number") // monotonic per order_id, starts at 1
+  eventType      String   @map("event_type") @db.VarChar(100)
+  eventData      Json     @default("{}") @map("event_data")
+  ipAddress      String?  @map("ip_address") @db.VarChar(45) // masked in views (I)
+  ipEncrypted    Bytes?   @map("ip_encrypted") // AES-256-GCM full IP (I)
+  userAgent      String?  @map("user_agent") @db.Text
+  externalRef    String?  @map("external_ref") @db.VarChar(200) // paypal_event_id, capture_id, etc. (A,C)
+  prevHash       String?  @map("prev_hash") @db.VarChar(64) // SHA256 of previous event in chain (A)
+  eventHash      String   @map("event_hash") @db.VarChar(64) // SHA256(order_id+seq+type+data+prev_hash+created_at) (A)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, sequenceNumber]) // ensures monotonic chain per order
+  @@index([orderId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([externalRef])
+  @@map("order_events")
+}
+
+// ── ORDER SNAPSHOTS (FORENSIC — IMMUTABLE) ─────────────────
+// Snapshot of product page as buyer saw it at purchase time (B)
+
+model OrderSnapshot {
+  id              String   @id @default(uuid())
+  orderId         String   @map("order_id")
+  snapshotType    String   @map("snapshot_type") @db.VarChar(20) // 'json' | 'html' | 'pdf'
+  snapshotJson    Json?    @map("snapshot_json") // full product data (always present)
+  snapshotHtmlKey String?  @map("snapshot_html_key") @db.VarChar(1000) // S3 key to rendered HTML
+  snapshotPdfKey  String?  @map("snapshot_pdf_key") @db.VarChar(1000) // S3 key to PDF render
+  snapshotHash    String   @map("snapshot_hash") @db.VarChar(64) // SHA256 of primary snapshot content
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("order_snapshots")
+}
+
+// ── DOWNLOAD TOKENS ────────────────────────────────────────
+// Token is NEVER stored in plaintext. Only SHA256 hash is persisted. (D)
+// The raw token exists only in the download URL sent to buyer.
+
+model DownloadToken {
+  id             String   @id @default(uuid())
+  orderId        String   @map("order_id")
+  tokenHash      String   @map("token_hash") @db.VarChar(64) // SHA256(raw_token) — raw token NEVER in DB (D)
+  stageId        String?  @map("stage_id") // FK to DeliveryStage if staged delivery (F)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz
+  used           Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([tokenHash])
+  @@map("download_tokens")
+}
+
+// ── DELIVERY STAGES (for expensive source-code) ────────────
+// Stage 1: preview/demo JAR. Stage 2: full source after confirmation. (F)
+
+model DeliveryStage {
+  id               String              @id @default(uuid())
+  orderId          String              @map("order_id")
+  stageType        DeliveryStageType   @map("stage_type") // preview | full
+  stageOrder       Int                 @map("stage_order") // 1, 2, ...
+  status           DeliveryStageStatus @default(pending)
+  storageKey       String?             @map("storage_key") @db.VarChar(1000)
+  sha256Hash       String?             @map("sha256_hash") @db.VarChar(64)
+  filename         String?             @db.VarChar(500)
+  fileSize         BigInt?             @map("file_size")
+  downloadLimit    Int                 @default(3) @map("download_limit")
+  downloadCount    Int                 @default(0) @map("download_count")
+  releasedAt       DateTime?           @map("released_at") @db.Timestamptz
+  revokedAt        DateTime?           @map("revoked_at") @db.Timestamptz
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, stageOrder])
+  @@index([orderId])
+  @@map("delivery_stages")
+}
+
+// ── LICENSES ───────────────────────────────────────────────
+
+model License {
+  id          String        @id @default(uuid())
+  orderId     String        @unique @map("order_id")
+  productId   String        @map("product_id")
+  licenseKey  String        @unique @map("license_key") @db.VarChar(100)
+  buyerEmail  String        @map("buyer_email") @db.VarChar(500)
+  fingerprint String        @db.VarChar(64)
+  status      LicenseStatus @default(active)
+  metadata    Json          @default("{}")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([licenseKey])
+  @@map("licenses")
+}
+
+// ── WEBHOOK LOGS ───────────────────────────────────────────
+
+model WebhookLog {
+  id               String    @id @default(uuid())
+  paypalEventId    String    @unique @map("paypal_event_id") @db.VarChar(200) // UNIQUE for idempotency (C)
+  eventType        String    @map("event_type") @db.VarChar(100)
+  payload          Json
+  signatureValid   Boolean   @map("signature_valid")
+  processed        Boolean   @default(false)
+  processingResult String?   @map("processing_result") @db.Text
+  linkedOrderId    String?   @map("linked_order_id") @db.VarChar(100) // links to Order.id
+  receivedAt       DateTime  @default(now()) @map("received_at") @db.Timestamptz
+  processedAt      DateTime? @map("processed_at") @db.Timestamptz
+
+  @@index([paypalEventId])
+  @@index([linkedOrderId])
+  @@map("webhook_logs")
+}
+
+// ── SITE SETTINGS (single-row config) ─────────────────────
+
+model SiteSettings {
+  id              String   @id @default("default")
+  storeName       String   @default("TiendaDigital") @map("store_name") @db.VarChar(200)
+  storeSlogan     String   @default("Productos digitales premium para Minecraft") @map("store_slogan") @db.VarChar(500)
+  contactEmail    String   @default("support@tiendadigital.com") @map("contact_email") @db.VarChar(500)
+  privacyEmail    String   @default("privacy@tiendadigital.com") @map("privacy_email") @db.VarChar(500)
+  heroTitle       String   @default("Plugins, Maps y Configs de calidad profesional") @map("hero_title") @db.VarChar(500)
+  heroDescription String   @default("Descubre nuestra colección de productos digitales para Minecraft. Spawns, dungeons, plugins y source code — todo con entrega instantánea y soporte incluido.") @map("hero_description") @db.Text
+  appearance      Json     @default("{}") // theme colors, backgrounds, etc.
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("site_settings")
+}
+
+// ── ADMIN USERS ────────────────────────────────────────────
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique @db.VarChar(500)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String   @db.VarChar(200)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+
+  @@map("admin_users")
+}

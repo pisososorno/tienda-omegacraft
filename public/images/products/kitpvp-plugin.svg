@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a0a0a"/>
+      <stop offset="50%" style="stop-color:#2a1020"/>
+      <stop offset="100%" style="stop-color:#0a1a2a"/>
+    </linearGradient>
+    <linearGradient id="sword1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#c0c0c0"/>
+      <stop offset="100%" style="stop-color:#808080"/>
+    </linearGradient>
+    <linearGradient id="diamond" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6ef0f0"/>
+      <stop offset="50%" style="stop-color:#40c0c0"/>
+      <stop offset="100%" style="stop-color:#2090a0"/>
+    </linearGradient>
+    <linearGradient id="lava" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6600"/>
+      <stop offset="50%" style="stop-color:#cc3300"/>
+      <stop offset="100%" style="stop-color:#991100"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <!-- Arena floor -->
+  <ellipse cx="400" cy="380" rx="320" ry="80" fill="#333" opacity="0.3"/>
+  <ellipse cx="400" cy="375" rx="300" ry="70" fill="#3a3030" opacity="0.5"/>
+  <!-- Lava pit edges -->
+  <ellipse cx="400" cy="380" rx="100" ry="25" fill="url(#lava)" opacity="0.4"/>
+  <ellipse cx="400" cy="378" rx="80" ry="18" fill="#ff4400" opacity="0.3"/>
+  <!-- Arena walls -->
+  <rect x="80" y="200" width="30" height="180" fill="#4a4040" rx="2"/>
+  <rect x="690" y="200" width="30" height="180" fill="#4a4040" rx="2"/>
+  <!-- Pillars -->
+  <rect x="180" y="180" width="20" height="200" fill="#555" rx="2"/>
+  <rect x="600" y="180" width="20" height="200" fill="#555" rx="2"/>
+  <!-- Fence top -->
+  <rect x="80" y="195" width="640" height="8" fill="#5a5050" rx="2"/>
+  <!-- Diamond Sword 1 (left) -->
+  <g transform="translate(280,120) rotate(-30)">
+    <rect x="-4" y="-80" width="8" height="90" fill="url(#diamond)" rx="2"/>
+    <rect x="-12" y="5" width="24" height="8" fill="#6b4020" rx="1"/>
+    <rect x="-6" y="10" width="12" height="25" fill="#8b5030" rx="2"/>
+    <polygon points="-4,-80 0,-95 4,-80" fill="#9ff"/>
+  </g>
+  <!-- Diamond Sword 2 (right, crossed) -->
+  <g transform="translate(520,120) rotate(30)">
+    <rect x="-4" y="-80" width="8" height="90" fill="url(#diamond)" rx="2"/>
+    <rect x="-12" y="5" width="24" height="8" fill="#6b4020" rx="1"/>
+    <rect x="-6" y="10" width="12" height="25" fill="#8b5030" rx="2"/>
+    <polygon points="-4,-80 0,-95 4,-80" fill="#9ff"/>
+  </g>
+  <!-- VS text -->
+  <text x="400" y="175" font-family="Arial Black, sans-serif" font-size="60" font-weight="900" fill="#ff4444" text-anchor="middle" opacity="0.9">VS</text>
+  <text x="400" y="175" font-family="Arial Black, sans-serif" font-size="60" font-weight="900" fill="none" stroke="#ff6666" stroke-width="1" text-anchor="middle" opacity="0.4">VS</text>
+  <!-- Player 1 silhouette (left) -->
+  <g transform="translate(250,280)">
+    <circle cx="0" cy="-45" r="15" fill="#4488ff"/>
+    <rect x="-12" y="-30" width="24" height="35" fill="#3366cc" rx="3"/>
+    <rect x="-15" y="-25" width="8" height="28" fill="#3366cc" rx="2"/>
+    <rect x="7" y="-25" width="8" height="28" fill="#3366cc" rx="2"/>
+    <rect x="-10" y="5" width="9" height="30" fill="#2244aa" rx="2"/>
+    <rect x="1" y="5" width="9" height="30" fill="#2244aa" rx="2"/>
+    <!-- Sword in hand -->
+    <rect x="15" y="-40" width="4" height="35" fill="#6ef0f0" rx="1" transform="rotate(20,17,-22)"/>
+  </g>
+  <!-- Player 2 silhouette (right) -->
+  <g transform="translate(550,280)">
+    <circle cx="0" cy="-45" r="15" fill="#ff4444"/>
+    <rect x="-12" y="-30" width="24" height="35" fill="#cc3333" rx="3"/>
+    <rect x="-15" y="-25" width="8" height="28" fill="#cc3333" rx="2"/>
+    <rect x="7" y="-25" width="8" height="28" fill="#cc3333" rx="2"/>
+    <rect x="-10" y="5" width="9" height="30" fill="#aa2222" rx="2"/>
+    <rect x="1" y="5" width="9" height="30" fill="#aa2222" rx="2"/>
+    <!-- Sword in hand -->
+    <rect x="-19" y="-40" width="4" height="35" fill="#6ef0f0" rx="1" transform="rotate(-20,-17,-22)"/>
+  </g>
+  <!-- Particles -->
+  <circle cx="340" cy="230" r="3" fill="#ff6644" opacity="0.6"/>
+  <circle cx="460" cy="210" r="2" fill="#ff6644" opacity="0.4"/>
+  <circle cx="300" cy="190" r="2" fill="#44aaff" opacity="0.5"/>
+  <circle cx="500" cy="180" r="3" fill="#44aaff" opacity="0.4"/>
+  <circle cx="380" cy="250" r="2" fill="#ffaa00" opacity="0.6"/>
+  <circle cx="420" cy="240" r="2" fill="#ffaa00" opacity="0.5"/>
+  <!-- Health bars -->
+  <rect x="150" y="340" width="120" height="8" rx="4" fill="#333"/>
+  <rect x="150" y="340" width="90" height="8" rx="4" fill="#44ff44"/>
+  <rect x="530" y="340" width="120" height="8" rx="4" fill="#333"/>
+  <rect x="530" y="340" width="60" height="8" rx="4" fill="#ff4444"/>
+  <!-- Kill counter icons -->
+  <text x="170" y="370" font-family="monospace" font-size="11" fill="#88ff88">♦ Kills: 15</text>
+  <text x="550" y="370" font-family="monospace" font-size="11" fill="#ff8888">♦ Kills: 8</text>
+  <!-- Label -->
+  <rect x="0" y="400" width="800" height="100" fill="black" opacity="0.6"/>
+  <text x="400" y="445" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">KitPvP Pro Plugin</text>
+  <text x="400" y="475" font-family="Arial, sans-serif" font-size="14" fill="#ccc" text-anchor="middle">Kits, arenas, stats y leaderboards completos</text>
+</svg>

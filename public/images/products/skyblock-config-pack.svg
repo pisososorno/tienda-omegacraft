@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a1628"/>
+      <stop offset="50%" style="stop-color:#1a3a5c"/>
+      <stop offset="100%" style="stop-color:#4a90c2"/>
+    </linearGradient>
+    <linearGradient id="island" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#5a8f3e"/>
+      <stop offset="30%" style="stop-color:#4a7a32"/>
+      <stop offset="100%" style="stop-color:#6b5030"/>
+    </linearGradient>
+    <linearGradient id="chest" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#c4883a"/>
+      <stop offset="100%" style="stop-color:#8b5e20"/>
+    </linearGradient>
+  </defs>
+  <!-- Sky -->
+  <rect width="800" height="500" fill="url(#sky)"/>
+  <!-- Stars -->
+  <circle cx="80" cy="40" r="1.5" fill="white" opacity="0.9"/>
+  <circle cx="180" cy="70" r="1" fill="white" opacity="0.6"/>
+  <circle cx="300" cy="25" r="2" fill="white" opacity="0.8"/>
+  <circle cx="450" cy="55" r="1" fill="white" opacity="0.5"/>
+  <circle cx="600" cy="35" r="1.5" fill="white" opacity="0.7"/>
+  <circle cx="720" cy="80" r="1" fill="white" opacity="0.6"/>
+  <!-- Clouds -->
+  <ellipse cx="200" cy="150" rx="80" ry="25" fill="white" opacity="0.08"/>
+  <ellipse cx="600" cy="120" rx="100" ry="30" fill="white" opacity="0.06"/>
+  <!-- Main floating island -->
+  <ellipse cx="400" cy="280" rx="180" ry="30" fill="#3a2a15"/>
+  <rect x="220" y="250" width="360" height="30" rx="5" fill="url(#island)"/>
+  <ellipse cx="400" cy="250" rx="180" ry="30" fill="#5a8f3e"/>
+  <!-- Dirt bottom of island -->
+  <path d="M250,280 Q300,350 350,360 Q400,380 450,360 Q500,350 550,280" fill="#6b5030" opacity="0.8"/>
+  <path d="M280,280 Q350,330 400,340 Q450,330 520,280" fill="#5a4025" opacity="0.6"/>
+  <!-- Dripping water -->
+  <line x1="380" y1="340" x2="380" y2="400" stroke="#4a90c2" stroke-width="2" opacity="0.4"/>
+  <line x1="420" y1="350" x2="420" y2="420" stroke="#4a90c2" stroke-width="2" opacity="0.3"/>
+  <!-- Tree on island -->
+  <rect x="360" y="170" width="12" height="80" fill="#5a3a1a"/>
+  <circle cx="366" cy="150" r="40" fill="#2a6a2a"/>
+  <circle cx="340" cy="165" r="25" fill="#1a5a1a"/>
+  <circle cx="390" cy="160" r="30" fill="#3a7a3a"/>
+  <!-- Small house -->
+  <rect x="440" y="210" width="50" height="40" fill="#b08050"/>
+  <polygon points="435,210 465,185 495,210" fill="#8b3a3a"/>
+  <rect x="455" y="225" width="15" height="25" fill="#4a2a15"/>
+  <rect x="480" y="218" width="8" height="8" fill="#87ceeb" opacity="0.7"/>
+  <!-- Chest -->
+  <rect x="290" y="228" width="30" height="22" rx="2" fill="url(#chest)"/>
+  <rect x="288" y="225" width="34" height="8" rx="2" fill="#d4993a"/>
+  <rect x="302" y="230" width="6" height="6" rx="1" fill="#f0c040"/>
+  <!-- Cobblestone generator hint -->
+  <rect x="510" y="238" width="20" height="12" fill="#888" rx="1"/>
+  <rect x="535" y="238" width="20" height="12" fill="#cc5500" rx="1"/>
+  <rect x="522" y="232" width="10" height="6" fill="#6af" opacity="0.5"/>
+  <!-- Small floating islands -->
+  <ellipse cx="120" cy="300" rx="50" ry="15" fill="#4a7a32"/>
+  <path d="M80,300 Q100,340 120,345 Q140,340 160,300" fill="#5a4025" opacity="0.7"/>
+  <rect x="110" y="275" width="6" height="25" fill="#5a3a1a"/>
+  <circle cx="113" cy="268" r="15" fill="#2a6a2a"/>
+  <ellipse cx="700" cy="320" rx="40" ry="12" fill="#4a7a32"/>
+  <path d="M668,320 Q685,350 700,352 Q715,350 732,320" fill="#5a4025" opacity="0.7"/>
+  <!-- Particles/sparkles -->
+  <circle cx="350" cy="200" r="2" fill="#f0e060" opacity="0.6"/>
+  <circle cx="460" cy="190" r="1.5" fill="#f0e060" opacity="0.4"/>
+  <circle cx="300" cy="240" r="1.5" fill="#60f0f0" opacity="0.5"/>
+  <circle cx="520" cy="230" r="2" fill="#60f0f0" opacity="0.4"/>
+  <!-- Label -->
+  <rect x="0" y="400" width="800" height="100" fill="black" opacity="0.5"/>
+  <text x="400" y="445" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">Skyblock Config Pack</text>
+  <text x="400" y="475" font-family="Arial, sans-serif" font-size="14" fill="#ccc" text-anchor="middle">Islas custom, challenges y rewards pre-configurados</text>
+</svg>
