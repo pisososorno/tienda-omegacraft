@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Package, Tag, ArrowRight, ImageIcon, Search, Store } from "lucide-react";
@@ -41,6 +41,21 @@ const categoryFilterIcons: Record<string, string> = {
 };
 
 export default function CatalogPage() {
+  return (
+    <Suspense fallback={
+      <div className="container py-16 text-center">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-muted rounded w-1/3 mx-auto" />
+          <div className="h-4 bg-muted rounded w-1/2 mx-auto" />
+        </div>
+      </div>
+    }>
+      <CatalogContent />
+    </Suspense>
+  );
+}
+
+function CatalogContent() {
   const searchParams = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +97,7 @@ export default function CatalogPage() {
     });
 
   return (
-    <div style={{ backgroundColor: "var(--site-catalog-bg)" }}>
+    <div style={{ backgroundColor: "var(--site-catalog-bg)" }} suppressHydrationWarning>
       {/* Header */}
       <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDE4YzEuNjU3IDAgMy0xLjM0MyAzLTNzLTEuMzQzLTMtMy0zLTMgMS4zNDMtMyAzIDEuMzQzIDMgMyAzem0wIDZjMS42NTcgMCAzLTEuMzQzIDMtM3MtMS4zNDMtMy0zLTMtMyAxLjM0My0zIDMgMS4zNDMgMyAzIDN6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-50" />
