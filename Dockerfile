@@ -30,6 +30,8 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 
+RUN mkdir -p /app/public/uploads && chown -R nextjs:nodejs /app/public/uploads && chmod -R 775 /app/public/uploads
+
 USER nextjs
 
 EXPOSE 3000
