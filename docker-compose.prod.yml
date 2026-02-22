@@ -3,19 +3,23 @@ services:
     image: postgres:16-alpine
     container_name: tienda-postgres
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    # Solo accesible desde la red interna Docker — NO expone al host
+    expose:
+      - "5432"
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${DB_USER:-tienda}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Debes definir DB_PASSWORD en .env.local}
       POSTGRES_DB: ${DB_NAME:-tienda_digital}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - tienda-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tienda} -d ${DB_NAME:-tienda_digital}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   app:
     build:
@@ -23,14 +27,32 @@ services:
       dockerfile: Dockerfile
     container_name: tienda-app
     restart: unless-stopped
+    # Bind SOLO a 127.0.0.1 — accesible únicamente desde NGINX local
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env.local
     depends_on:
       postgres:
         condition: service_healthy
-    # No source volumes in production — code is baked into the image
+    volumes:
+      - uploads:/app/public/uploads
+    networks:
+      - tienda-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   pgdata:
+    name: tienda-pgdata
+  uploads:
+    name: tienda-uploads
+
+networks:
+  tienda-net:
+    name: tienda-net
+    driver: bridge
