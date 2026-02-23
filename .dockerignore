@@ -5,8 +5,13 @@ node_modules
 .env
 .env.*
 !.env.example
+!.env.production.example
 docker-compose*.yml
 README.md
+DEPLOY.md
 *.md
+!docker/entrypoint.sh
 .vscode
 .idea
+scripts/
+nginx/

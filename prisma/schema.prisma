@@ -336,6 +336,7 @@ model WebhookLog {
 model SiteSettings {
   id              String   @id @default("default")
   storeName       String   @default("TiendaDigital") @map("store_name") @db.VarChar(200)
+  logoUrl         String?  @map("logo_url") @db.VarChar(500)
   storeSlogan     String   @default("Productos digitales premium para Minecraft") @map("store_slogan") @db.VarChar(500)
   contactEmail    String   @default("support@tiendadigital.com") @map("contact_email") @db.VarChar(500)
   privacyEmail    String   @default("privacy@tiendadigital.com") @map("privacy_email") @db.VarChar(500)
@@ -350,12 +351,38 @@ model SiteSettings {
 // ── ADMIN USERS ────────────────────────────────────────────
 
 model AdminUser {
-  id           String   @id @default(uuid())
-  email        String   @unique @db.VarChar(500)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  name         String   @db.VarChar(200)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id           String    @id @default(uuid())
+  email        String    @unique @db.VarChar(500)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  name         String    @db.VarChar(200)
+  disabledAt   DateTime? @map("disabled_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
 
+  auditLogsAsActor  AdminAuditLog[] @relation("AuditActor")
+  auditLogsAsTarget AdminAuditLog[] @relation("AuditTarget")
+
   @@map("admin_users")
+}
+
+// ── ADMIN AUDIT LOG ───────────────────────────────────
+
+model AdminAuditLog {
+  id          String   @id @default(uuid())
+  actorId     String   @map("actor_id")
+  targetId    String?  @map("target_id")
+  action      String   @db.VarChar(100) // admin_user_created, password_changed, admin_disabled, admin_enabled, admin_login
+  metadata    Json     @default("{}")
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  userAgent   String?  @map("user_agent") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  actor  AdminUser @relation("AuditActor", fields: [actorId], references: [id])
+  target AdminUser? @relation("AuditTarget", fields: [targetId], references: [id])
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }

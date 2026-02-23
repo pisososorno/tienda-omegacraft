@@ -21,12 +21,18 @@ export default async function PublicLayout({
             {/* Brand */}
             <div className="md:col-span-1">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="p-1.5 rounded-lg bg-indigo-500/20">
-                  <Gamepad2 className="h-5 w-5 text-indigo-400" />
-                </div>
-                <span className="font-extrabold text-lg tracking-tight">
-                  {prefix}<span className="text-indigo-400">{highlight}</span>
-                </span>
+                {settings.logoUrl ? (
+                  <img src={settings.logoUrl} alt={settings.storeName} className="h-8 max-w-[160px] object-contain" />
+                ) : (
+                  <>
+                    <div className="p-1.5 rounded-lg bg-indigo-500/20">
+                      <Gamepad2 className="h-5 w-5 text-indigo-400" />
+                    </div>
+                    <span className="font-extrabold text-lg tracking-tight">
+                      {prefix}<span className="text-indigo-400">{highlight}</span>
+                    </span>
+                  </>
+                )}
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">
                 {settings.storeSlogan}. Plugins, mapas, configs y source code.

@@ -35,6 +35,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
 
 export interface SiteSettingsData {
   storeName: string;
+  logoUrl: string | null;
   storeSlogan: string;
   contactEmail: string;
   privacyEmail: string;
@@ -45,6 +46,7 @@ export interface SiteSettingsData {
 
 export const DEFAULT_SETTINGS: SiteSettingsData = {
   storeName: "TiendaDigital",
+  logoUrl: null,
   storeSlogan: "Productos digitales premium para Minecraft",
   contactEmail: "support@tiendadigital.com",
   privacyEmail: "privacy@tiendadigital.com",
@@ -87,6 +89,7 @@ export async function getSettings(): Promise<SiteSettingsData> {
 
       const settings: SiteSettingsData = {
         storeName: row.storeName,
+        logoUrl: row.logoUrl,
         storeSlogan: row.storeSlogan,
         contactEmail: row.contactEmail,
         privacyEmail: row.privacyEmail,

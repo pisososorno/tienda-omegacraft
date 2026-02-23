@@ -38,6 +38,7 @@ export async function GET() {
 
     return NextResponse.json({
       storeName: row.storeName,
+      logoUrl: row.logoUrl,
       storeSlogan: row.storeSlogan,
       contactEmail: row.contactEmail,
       privacyEmail: row.privacyEmail,
@@ -63,6 +64,7 @@ export async function PUT(req: Request) {
 
     const {
       storeName,
+      logoUrl,
       storeSlogan,
       contactEmail,
       privacyEmail,
@@ -86,6 +88,7 @@ export async function PUT(req: Request) {
       where: { id: "default" },
       update: {
         storeName: storeName.trim(),
+        logoUrl: logoUrl ?? null,
         storeSlogan: (storeSlogan ?? "").trim(),
         contactEmail: (contactEmail ?? "").trim(),
         privacyEmail: (privacyEmail ?? "").trim(),
@@ -96,6 +99,7 @@ export async function PUT(req: Request) {
       create: {
         id: "default",
         storeName: storeName.trim(),
+        logoUrl: logoUrl ?? null,
         storeSlogan: (storeSlogan ?? "").trim(),
         contactEmail: (contactEmail ?? "").trim(),
         privacyEmail: (privacyEmail ?? "").trim(),
@@ -111,6 +115,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({
       success: true,
       storeName: row.storeName,
+      logoUrl: row.logoUrl,
       storeSlogan: row.storeSlogan,
       contactEmail: row.contactEmail,
       privacyEmail: row.privacyEmail,

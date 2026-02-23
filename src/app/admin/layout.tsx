@@ -13,6 +13,8 @@ import {
   Loader2,
   Box,
   Settings,
+  Users,
+  UserCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SessionProvider } from "next-auth/react";
@@ -84,6 +86,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
               Orders
             </Button>
           </Link>
+          <Link href="/admin/users">
+            <Button
+              variant={pathname?.startsWith("/admin/users") ? "secondary" : "ghost"}
+              className="w-full justify-start gap-2"
+              size="sm"
+            >
+              <Users className="h-4 w-4" />
+              Admin Users
+            </Button>
+          </Link>
           <Link href="/admin/settings">
             <Button
               variant={pathname?.startsWith("/admin/settings") ? "secondary" : "ghost"}
@@ -92,6 +104,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             >
               <Settings className="h-4 w-4" />
               Settings
+            </Button>
+          </Link>
+          <Link href="/admin/account">
+            <Button
+              variant={pathname?.startsWith("/admin/account") ? "secondary" : "ghost"}
+              className="w-full justify-start gap-2"
+              size="sm"
+            >
+              <UserCog className="h-4 w-4" />
+              My Account
             </Button>
           </Link>
         </nav>

@@ -10,7 +10,7 @@ import { splitStoreName } from "@/lib/settings";
 export function Navbar() {
   const pathname = usePathname();
   const isHome = pathname === "/home" || pathname === "/";
-  const { storeName } = useSiteSettings();
+  const { storeName, logoUrl } = useSiteSettings();
   const { prefix, highlight } = splitStoreName(storeName);
 
   return (
@@ -24,12 +24,18 @@ export function Navbar() {
     >
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className={`p-1.5 rounded-lg ${isHome ? "bg-indigo-500/20" : "bg-indigo-50"}`}>
-            <Gamepad2 className={`h-5 w-5 ${isHome ? "text-indigo-400" : "text-indigo-600"}`} />
-          </div>
-          <span className={`font-extrabold text-lg tracking-tight ${isHome ? "text-white" : "text-foreground"}`}>
-            {prefix}<span className={isHome ? "text-indigo-400" : "text-indigo-600"}>{highlight}</span>
-          </span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={storeName} className="h-8 max-w-[160px] object-contain" />
+          ) : (
+            <>
+              <div className={`p-1.5 rounded-lg ${isHome ? "bg-indigo-500/20" : "bg-indigo-50"}`}>
+                <Gamepad2 className={`h-5 w-5 ${isHome ? "text-indigo-400" : "text-indigo-600"}`} />
+              </div>
+              <span className={`font-extrabold text-lg tracking-tight ${isHome ? "text-white" : "text-foreground"}`}>
+                {prefix}<span className={isHome ? "text-indigo-400" : "text-indigo-600"}>{highlight}</span>
+              </span>
+            </>
+          )}
         </Link>
 
         <nav className="flex items-center gap-1">

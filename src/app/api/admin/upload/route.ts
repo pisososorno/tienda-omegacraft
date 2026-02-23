@@ -6,6 +6,8 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), "public", "uploads");
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return jsonError("Unauthorized", 401);
@@ -32,14 +34,13 @@ export async function POST(req: NextRequest) {
     const hash = crypto.randomBytes(8).toString("hex");
     const filename = `${Date.now()}-${hash}.${ext}`;
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
+    await mkdir(UPLOADS_DIR, { recursive: true });
 
-    const filepath = path.join(uploadDir, filename);
+    const filepath = path.join(UPLOADS_DIR, filename);
     await writeFile(filepath, buffer);
 
     return jsonOk({
-      url: `/uploads/${filename}`,
+      url: `/api/uploads/${filename}`,
       filename: file.name,
       size: file.size,
     });

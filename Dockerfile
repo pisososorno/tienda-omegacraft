@@ -1,41 +1,66 @@
-FROM node:20-slim AS base
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Dockerfile — TiendaDigital Enterprise Production Build
+# Pinned: node:20.18-slim (Debian bookworm), Prisma 5.x
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Install dependencies only when needed
+FROM node:20.18-slim AS base
+
+# ── Stage 1: Install dependencies ─────────────────────────
 FROM base AS deps
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --ignore-scripts
+# Generate Prisma client explicitly with project version
+COPY prisma ./prisma
+RUN npx prisma generate
 
-# Rebuild the source code only when needed
+# ── Stage 2: Build application ────────────────────────────
 FROM base AS builder
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npx next build
 
-# Production image
+# ── Stage 3: Production runtime ──────────────────────────
 FROM base AS runner
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl ca-certificates su-exec && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Copy standalone build
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+
+# Copy Prisma schema + migrations (needed for migrate deploy in entrypoint)
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
-RUN mkdir -p /app/public/uploads && chown -R nextjs:nodejs /app/public/uploads && chmod -R 775 /app/public/uploads
+# Copy bcryptjs for entrypoint seed logic
+COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
-USER nextjs
+# Copy entrypoint
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Create uploads directory (will be mounted as volume)
+RUN mkdir -p /data/uploads && chown -R nextjs:nodejs /data/uploads && chmod -R 775 /data/uploads
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV UPLOADS_DIR="/data/uploads"
 
-CMD ["node", "server.js"]
+# Entrypoint runs as root (fixes perms, migrates, seeds) then execs as nextjs
+ENTRYPOINT ["entrypoint.sh"]

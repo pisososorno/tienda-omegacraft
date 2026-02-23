@@ -1,0 +1,113 @@
+#!/bin/sh
+set -e
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ENTRYPOINT — TiendaDigital Production Container
+# Runs as root briefly to fix perms, then execs app as nextjs
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+UPLOADS_DIR="${UPLOADS_DIR:-/data/uploads}"
+
+echo "┌─────────────────────────────────────────┐"
+echo "│  TiendaDigital — Production Entrypoint  │"
+echo "└─────────────────────────────────────────┘"
+
+# ── 1) Ensure uploads directory exists with correct perms ──
+echo "→ Ensuring uploads directory: ${UPLOADS_DIR}"
+mkdir -p "${UPLOADS_DIR}"
+chown -R nextjs:nodejs "${UPLOADS_DIR}"
+chmod -R 775 "${UPLOADS_DIR}"
+
+# ── 2) Wait for PostgreSQL to be ready ─────────────────────
+echo "→ Waiting for PostgreSQL..."
+MAX_RETRIES=30
+RETRY=0
+until node -e "
+  const { PrismaClient } = require('@prisma/client');
+  const p = new PrismaClient();
+  p.\$queryRaw\`SELECT 1\`.then(() => { p.\$disconnect(); process.exit(0); }).catch(() => { p.\$disconnect(); process.exit(1); });
+" 2>/dev/null; do
+  RETRY=$((RETRY + 1))
+  if [ "$RETRY" -ge "$MAX_RETRIES" ]; then
+    echo "✗ PostgreSQL not reachable after ${MAX_RETRIES} attempts. Aborting."
+    exit 1
+  fi
+  echo "  waiting... (${RETRY}/${MAX_RETRIES})"
+  sleep 2
+done
+echo "✓ PostgreSQL is ready"
+
+# ── 3) Run Prisma migrations ──────────────────────────────
+echo "→ Running Prisma migrations..."
+npx prisma migrate deploy
+echo "✓ Migrations applied"
+
+# ── 4) Conditional seed: create admin if none exists ──────
+echo "→ Checking if admin user exists..."
+ADMIN_EXISTS=$(node -e "
+  const { PrismaClient } = require('@prisma/client');
+  const p = new PrismaClient();
+  p.adminUser.count().then(c => { console.log(c); p.\$disconnect(); }).catch(() => { console.log('0'); p.\$disconnect(); });
+" 2>/dev/null)
+
+if [ "$ADMIN_EXISTS" = "0" ]; then
+  echo "→ No admin found. Creating initial admin..."
+
+  ADMIN_EMAIL="${ADMIN_EMAIL:-admin@tiendadigital.com}"
+  ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
+  ADMIN_NAME="${ADMIN_NAME:-Admin}"
+
+  node -e "
+    const { PrismaClient } = require('@prisma/client');
+    const bcrypt = require('bcryptjs');
+    const p = new PrismaClient();
+    (async () => {
+      const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 12);
+      await p.adminUser.create({
+        data: {
+          email: process.env.ADMIN_EMAIL || 'admin@tiendadigital.com',
+          passwordHash: hash,
+          name: process.env.ADMIN_NAME || 'Admin',
+        },
+      });
+      // Create default site settings if not exists
+      await p.siteSettings.upsert({
+        where: { id: 'default' },
+        update: {},
+        create: {
+          id: 'default',
+          storeName: process.env.APP_NAME || 'TiendaDigital',
+          storeSlogan: 'Productos digitales premium para Minecraft',
+          contactEmail: 'support@tiendadigital.com',
+          privacyEmail: 'privacy@tiendadigital.com',
+          heroTitle: 'Plugins, Maps y Configs de calidad profesional',
+          heroDescription: 'Descubre nuestra colección de productos digitales para Minecraft.',
+          appearance: {},
+        },
+      });
+      // Create default terms version
+      const crypto = require('crypto');
+      const content = 'Default terms - configure from admin panel';
+      const hash2 = crypto.createHash('sha256').update(content).digest('hex');
+      const existing = await p.termsVersion.findFirst({ where: { isActive: true } });
+      if (!existing) {
+        await p.termsVersion.create({
+          data: {
+            versionLabel: 'v1.0',
+            content: content,
+            contentHash: hash2,
+            isActive: true,
+          },
+        });
+      }
+      await p.\$disconnect();
+      console.log('✓ Admin created: ' + (process.env.ADMIN_EMAIL || 'admin@tiendadigital.com'));
+    })().catch(e => { console.error('✗ Seed error:', e.message); p.\$disconnect(); process.exit(1); });
+  "
+else
+  echo "✓ Admin already exists (${ADMIN_EXISTS} admin user(s))"
+fi
+
+# ── 5) Start the application as non-root user ────────────
+echo "→ Starting Next.js server..."
+exec su-exec nextjs node server.js

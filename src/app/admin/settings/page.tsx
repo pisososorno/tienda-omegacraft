@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Save, Loader2, ExternalLink, Shield, CreditCard, Globe,
-  Palette, RotateCcw, Check, Sparkles,
+  Palette, RotateCcw, Check, Sparkles, Upload, X, ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +80,9 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
   const [form, setForm] = useState({
     storeName: "TiendaDigital",
     storeSlogan: "Productos digitales premium para Minecraft",
@@ -108,6 +111,7 @@ export default function AdminSettingsPage() {
           heroTitle: data.heroTitle || f.heroTitle,
           heroDescription: data.heroDescription || f.heroDescription,
         }));
+        if (data.logoUrl !== undefined) setLogoUrl(data.logoUrl);
         if (data.appearance) {
           setAppearance((a) => ({ ...a, ...data.appearance }));
         }
@@ -146,6 +150,7 @@ export default function AdminSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           storeName: form.storeName,
+          logoUrl,
           storeSlogan: form.storeSlogan,
           contactEmail: form.contactEmail,
           privacyEmail: form.privacyEmail,
@@ -212,6 +217,69 @@ export default function AdminSettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Se muestra en el navbar, footer, emails, PDF y toda la web.
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Logo de la tienda</label>
+                {logoUrl ? (
+                  <div className="flex items-center gap-4">
+                    <div className="relative w-32 h-16 rounded-lg border overflow-hidden bg-muted flex items-center justify-center">
+                      <img src={logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">{logoUrl}</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive gap-1 h-7 text-xs w-fit"
+                        onClick={() => { setLogoUrl(null); setSaved(false); }}
+                      >
+                        <X className="h-3 w-3" /> Quitar logo
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center w-full h-24 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 bg-muted/30 cursor-pointer transition-colors">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingLogo(true);
+                        try {
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+                          const data = await res.json();
+                          if (res.ok && data.url) {
+                            setLogoUrl(data.url);
+                            setSaved(false);
+                          } else {
+                            setError(data.error || "Error subiendo logo");
+                          }
+                        } catch {
+                          setError("Error subiendo logo");
+                        } finally {
+                          setUploadingLogo(false);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    {uploadingLogo ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                        <Upload className="h-5 w-5" />
+                        <span className="text-xs">Subir logo (PNG, JPG, WebP, SVG — max 5MB)</span>
+                      </div>
+                    )}
+                  </label>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  Se muestra en el navbar y footer. Recomendado: fondo transparente, max 200×60px. Si no hay logo, se usa el icono + nombre.
                 </p>
               </div>
               <div>

@@ -1,14 +1,19 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# docker-compose.prod.yml — TiendaDigital Enterprise
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: tienda-postgres
     restart: unless-stopped
-    # Solo accesible desde la red interna Docker — NO expone al host
+    # NO ports — only reachable from tienda-net
     expose:
       - "5432"
     environment:
       POSTGRES_USER: ${DB_USER:-tienda}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Debes definir DB_PASSWORD en .env.local}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env.production}
       POSTGRES_DB: ${DB_NAME:-tienda_digital}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -20,6 +25,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   app:
     build:
@@ -27,16 +37,16 @@ services:
       dockerfile: Dockerfile
     container_name: tienda-app
     restart: unless-stopped
-    # Bind SOLO a 127.0.0.1 — accesible únicamente desde NGINX local
+    # Bind ONLY to loopback — accessible only via NGINX on the host
     ports:
       - "127.0.0.1:3000:3000"
     env_file:
-      - .env.local
+      - .env.production
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - uploads:/app/public/uploads
+      - uploads:/data/uploads
     networks:
       - tienda-net
     healthcheck:
@@ -44,7 +54,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 volumes:
   pgdata:

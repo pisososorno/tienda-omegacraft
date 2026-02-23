@@ -19,6 +19,7 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!admin) return null;
+        if (admin.disabledAt) return null;
 
         const valid = await compare(credentials.password, admin.passwordHash);
         if (!valid) return null;
