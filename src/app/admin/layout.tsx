@@ -15,6 +15,7 @@ import {
   Settings,
   Users,
   UserCog,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SessionProvider } from "next-auth/react";
@@ -94,6 +95,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
             >
               <Users className="h-4 w-4" />
               Admin Users
+            </Button>
+          </Link>
+          <Link href="/admin/terms">
+            <Button
+              variant={pathname?.startsWith("/admin/terms") ? "secondary" : "ghost"}
+              className="w-full justify-start gap-2"
+              size="sm"
+            >
+              <FileText className="h-4 w-4" />
+              Terms & Privacy
             </Button>
           </Link>
           <Link href="/admin/settings">

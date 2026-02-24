@@ -252,7 +252,7 @@ export default async function TermsPage() {
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
     });
-    if (terms) {
+    if (terms && terms.content.length > 100) {
       termsContent = terms.content;
       versionLabel = terms.versionLabel;
       contentHash = terms.contentHash;

@@ -238,7 +238,7 @@ export default async function PrivacyPage() {
       where: { isActive: true },
       orderBy: { createdAt: "desc" },
     });
-    if (terms) {
+    if (terms && terms.content.length > 100) {
       // Extraer sección de privacidad si existe dentro del contenido
       const privacyIdx = terms.content.indexOf("# POLÍTICA DE PRIVACIDAD");
       if (privacyIdx >= 0) {

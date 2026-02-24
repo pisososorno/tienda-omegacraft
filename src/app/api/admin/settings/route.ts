@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { revalidatePath } from "next/cache";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { invalidateSettingsCache, DEFAULT_APPEARANCE } from "@/lib/settings";
@@ -109,8 +110,9 @@ export async function PUT(req: Request) {
       },
     });
 
-    // Invalidate server-side cache
+    // Invalidate server-side cache + Next.js page cache
     invalidateSettingsCache();
+    revalidatePath("/", "layout");
 
     return NextResponse.json({
       success: true,

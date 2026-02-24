@@ -42,10 +42,11 @@ if [ ! -f "$ENV_FILE" ]; then
   chmod 600 "$ENV_FILE"
 fi
 
-# ── 1) Pull latest code ──────────────────────────────────
+# ── 1) Pull latest code (force-reset to origin/main) ─────
 echo -e "${YELLOW}[1/4] Pulling latest code...${NC}"
-git pull --ff-only
-echo "  ✓ Code updated"
+git fetch origin main
+git reset --hard origin/main
+echo "  ✓ Code updated (reset to origin/main)"
 
 # ── 2) Rebuild image ─────────────────────────────────────
 echo ""
