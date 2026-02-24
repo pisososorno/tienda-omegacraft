@@ -241,7 +241,24 @@ Archivo: `.env.production` (en el servidor, NUNCA en el repo)
 
 ---
 
-## 8) Seguridad
+## 8) Prisma CLI en Runtime
+
+La imagen Docker incluye el binario `./node_modules/.bin/prisma` copiado desde el stage `deps`. Esto significa:
+
+- **No se necesita `npx`, `npm install` ni internet** en runtime para correr migraciones
+- El entrypoint usa `./node_modules/.bin/prisma migrate deploy` con ruta absoluta
+- Las migraciones se aplican **automáticamente en cada inicio** del contenedor
+- Si una migración falla, el contenedor **no arranca** (exit code 1) — esto previene que la app corra con un schema desactualizado
+- Los logs de migración usan prefijo `[entrypoint]` para facilitar el filtrado
+
+```bash
+# Ver solo logs de migración
+docker compose -f docker-compose.prod.yml logs app | grep "\[entrypoint\]"
+```
+
+---
+
+## 9) Seguridad
 
 - App bindeada a `127.0.0.1` — no expuesta directamente
 - PostgreSQL sin puerto en el host — solo red Docker interna
@@ -259,7 +276,7 @@ Archivo: `.env.production` (en el servidor, NUNCA en el repo)
 
 ---
 
-## 9) Estructura de archivos del deploy
+## 10) Estructura de archivos del deploy
 
 ```
 /opt/tienda/

@@ -8,18 +8,18 @@ set -e
 
 UPLOADS_DIR="${UPLOADS_DIR:-/data/uploads}"
 
-echo "┌─────────────────────────────────────────┐"
-echo "│  TiendaDigital — Production Entrypoint  │"
-echo "└─────────────────────────────────────────┘"
+echo "[entrypoint] ┌─────────────────────────────────────────┐"
+echo "[entrypoint] │  TiendaDigital — Production Entrypoint  │"
+echo "[entrypoint] └─────────────────────────────────────────┘"
 
 # ── 1) Ensure uploads directory exists with correct perms ──
-echo "→ Ensuring uploads directory: ${UPLOADS_DIR}"
+echo "[entrypoint] Ensuring uploads directory: ${UPLOADS_DIR}"
 mkdir -p "${UPLOADS_DIR}"
 chown -R nextjs:nodejs "${UPLOADS_DIR}"
 chmod -R 775 "${UPLOADS_DIR}"
 
 # ── 2) Wait for PostgreSQL to be ready ─────────────────────
-echo "→ Waiting for PostgreSQL..."
+echo "[entrypoint] Waiting for PostgreSQL..."
 MAX_RETRIES=30
 RETRY=0
 until node -e "
@@ -29,21 +29,25 @@ until node -e "
 " 2>/dev/null; do
   RETRY=$((RETRY + 1))
   if [ "$RETRY" -ge "$MAX_RETRIES" ]; then
-    echo "✗ PostgreSQL not reachable after ${MAX_RETRIES} attempts. Aborting."
+    echo "[entrypoint] ✗ PostgreSQL not reachable after ${MAX_RETRIES} attempts. Aborting."
     exit 1
   fi
   echo "  waiting... (${RETRY}/${MAX_RETRIES})"
   sleep 2
 done
-echo "✓ PostgreSQL is ready"
+echo "[entrypoint] ✓ PostgreSQL is ready"
 
 # ── 3) Run Prisma migrations ──────────────────────────────
-echo "→ Running Prisma migrations..."
-npx prisma migrate deploy
-echo "✓ Migrations applied"
+echo "[entrypoint] Running migrations..."
+if ./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma; then
+  echo "[entrypoint] ✓ Migrations applied successfully"
+else
+  echo "[entrypoint] ✗ Migration failed! Check DATABASE_URL and schema."
+  exit 1
+fi
 
 # ── 4) Conditional seed: create admin if none exists ──────
-echo "→ Checking if admin user exists..."
+echo "[entrypoint] Checking if admin user exists..."
 ADMIN_EXISTS=$(node -e "
   const { PrismaClient } = require('@prisma/client');
   const p = new PrismaClient();
@@ -51,7 +55,7 @@ ADMIN_EXISTS=$(node -e "
 " 2>/dev/null)
 
 if [ "$ADMIN_EXISTS" = "0" ]; then
-  echo "→ No admin found. Creating initial admin..."
+  echo "[entrypoint] No admin found. Creating initial admin..."
 
   ADMIN_EMAIL="${ADMIN_EMAIL:-admin@tiendadigital.com}"
   ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin123}"
@@ -105,9 +109,9 @@ if [ "$ADMIN_EXISTS" = "0" ]; then
     })().catch(e => { console.error('✗ Seed error:', e.message); p.\$disconnect(); process.exit(1); });
   "
 else
-  echo "✓ Admin already exists (${ADMIN_EXISTS} admin user(s))"
+  echo "[entrypoint] ✓ Admin already exists (${ADMIN_EXISTS} admin user(s))"
 fi
 
 # ── 5) Start the application as non-root user ────────────
-echo "→ Starting Next.js server..."
+echo "[entrypoint] Starting Next.js server as user nextjs..."
 exec su-exec nextjs node server.js
