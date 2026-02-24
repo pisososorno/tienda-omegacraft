@@ -27,7 +27,7 @@ RUN npx next build
 
 # ── Stage 3: Production runtime ──────────────────────────
 FROM base AS runner
-RUN apt-get update -y && apt-get install -y openssl ca-certificates su-exec && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl ca-certificates gosu && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -64,4 +64,4 @@ ENV HOSTNAME="0.0.0.0"
 ENV UPLOADS_DIR="/data/uploads"
 
 # Entrypoint runs as root (fixes perms, migrates, seeds) then execs as nextjs
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

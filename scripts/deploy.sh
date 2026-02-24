@@ -54,14 +54,19 @@ REQUIRED_VARS=(
 )
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo -e "${YELLOW}  .env.production not found. Creating from template...${NC}"
+  echo -e "${YELLOW}  .env.production not found. Creating automatically...${NC}"
 
-  if [ -f "$PROJECT_DIR/.env.production.example" ]; then
+  if [ -f "$PROJECT_DIR/.env.local" ]; then
+    cp "$PROJECT_DIR/.env.local" "$ENV_FILE"
+    echo "  ✓ Copied from .env.local"
+  elif [ -f "$PROJECT_DIR/.env.production.example" ]; then
     cp "$PROJECT_DIR/.env.production.example" "$ENV_FILE"
+    echo "  ✓ Copied from .env.production.example"
   else
-    echo -e "${RED}✗ .env.production.example not found either. Cannot continue.${NC}"
+    echo -e "${RED}✗ No .env.local or .env.production.example found. Cannot continue.${NC}"
     exit 1
   fi
+  chmod 600 "$ENV_FILE"
 
   # Auto-generate secrets if they have placeholder values
   for VAR in NEXTAUTH_SECRET DOWNLOAD_SECRET IP_ENCRYPTION_KEY; do
@@ -127,7 +132,7 @@ echo "  ✓ All required variables present"
 echo ""
 echo -e "${YELLOW}[3/6] Building and starting containers...${NC}"
 cd "$PROJECT_DIR"
-docker compose -f "$COMPOSE_FILE" up -d --build
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build
 
 # ── 4) Wait for health ───────────────────────────────────
 echo ""

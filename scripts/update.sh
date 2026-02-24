@@ -22,7 +22,25 @@ echo "│   TiendaDigital — Update Script              │"
 echo "└──────────────────────────────────────────────┘"
 echo -e "${NC}"
 
+ENV_FILE="$PROJECT_DIR/.env.production"
+
 cd "$PROJECT_DIR"
+
+# ── 0) Ensure .env.production exists ─────────────────────
+if [ ! -f "$ENV_FILE" ]; then
+  echo -e "${YELLOW}[0] .env.production not found. Creating...${NC}"
+  if [ -f "$PROJECT_DIR/.env.local" ]; then
+    cp "$PROJECT_DIR/.env.local" "$ENV_FILE"
+    echo "  ✓ Copied from .env.local"
+  elif [ -f "$PROJECT_DIR/.env.production.example" ]; then
+    cp "$PROJECT_DIR/.env.production.example" "$ENV_FILE"
+    echo "  ✓ Copied from .env.production.example (review values!)"
+  else
+    echo -e "${RED}✗ No .env.local or .env.production.example found.${NC}"
+    exit 1
+  fi
+  chmod 600 "$ENV_FILE"
+fi
 
 # ── 1) Pull latest code ──────────────────────────────────
 echo -e "${YELLOW}[1/4] Pulling latest code...${NC}"
@@ -32,13 +50,13 @@ echo "  ✓ Code updated"
 # ── 2) Rebuild image ─────────────────────────────────────
 echo ""
 echo -e "${YELLOW}[2/4] Rebuilding Docker image...${NC}"
-docker compose -f "$COMPOSE_FILE" build app
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build app
 echo "  ✓ Image rebuilt"
 
 # ── 3) Recreate app container (entrypoint handles migrations) ──
 echo ""
 echo -e "${YELLOW}[3/4] Restarting app container...${NC}"
-docker compose -f "$COMPOSE_FILE" up -d app
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d app
 echo "  ✓ Container restarted"
 
 # ── 4) Wait for health ───────────────────────────────────

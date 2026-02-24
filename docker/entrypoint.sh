@@ -4,13 +4,23 @@ set -e
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ENTRYPOINT — TiendaDigital Production Container
 # Runs as root briefly to fix perms, then execs app as nextjs
+# NO npx, NO global prisma — only node + absolute paths
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+PRISMA_CLI="/app/node_modules/prisma/build/index.js"
 UPLOADS_DIR="${UPLOADS_DIR:-/data/uploads}"
 
 echo "[entrypoint] ┌─────────────────────────────────────────┐"
 echo "[entrypoint] │  TiendaDigital — Production Entrypoint  │"
 echo "[entrypoint] └─────────────────────────────────────────┘"
+
+# ── 0) Verify Prisma CLI exists in image ─────────────────
+if [ ! -f "$PRISMA_CLI" ]; then
+  echo "[entrypoint] ✗ FATAL: Prisma CLI not found at $PRISMA_CLI"
+  echo "[entrypoint]   Dockerfile runner stage must COPY node_modules/prisma from deps."
+  exit 1
+fi
+echo "[entrypoint] ✓ Prisma CLI found: $PRISMA_CLI"
 
 # ── 1) Ensure uploads directory exists with correct perms ──
 echo "[entrypoint] Ensuring uploads directory: ${UPLOADS_DIR}"
@@ -32,17 +42,18 @@ until node -e "
     echo "[entrypoint] ✗ PostgreSQL not reachable after ${MAX_RETRIES} attempts. Aborting."
     exit 1
   fi
-  echo "  waiting... (${RETRY}/${MAX_RETRIES})"
+  echo "[entrypoint]   waiting... (${RETRY}/${MAX_RETRIES})"
   sleep 2
 done
 echo "[entrypoint] ✓ PostgreSQL is ready"
 
-# ── 3) Run Prisma migrations ──────────────────────────────
+# ── 3) Run Prisma migrations (absolute path, no npx) ─────
 echo "[entrypoint] Running migrations..."
-if ./node_modules/.bin/prisma migrate deploy --schema=./prisma/schema.prisma; then
+if node "$PRISMA_CLI" migrate deploy --schema=/app/prisma/schema.prisma; then
   echo "[entrypoint] ✓ Migrations applied successfully"
 else
   echo "[entrypoint] ✗ Migration failed! Check DATABASE_URL and schema."
+  echo "[entrypoint]   Run: docker compose -f docker-compose.prod.yml logs app"
   exit 1
 fi
 
@@ -74,7 +85,6 @@ if [ "$ADMIN_EXISTS" = "0" ]; then
           name: process.env.ADMIN_NAME || 'Admin',
         },
       });
-      // Create default site settings if not exists
       await p.siteSettings.upsert({
         where: { id: 'default' },
         update: {},
@@ -89,7 +99,6 @@ if [ "$ADMIN_EXISTS" = "0" ]; then
           appearance: {},
         },
       });
-      // Create default terms version
       const crypto = require('crypto');
       const content = 'Default terms - configure from admin panel';
       const hash2 = crypto.createHash('sha256').update(content).digest('hex');
@@ -105,13 +114,13 @@ if [ "$ADMIN_EXISTS" = "0" ]; then
         });
       }
       await p.\$disconnect();
-      console.log('✓ Admin created: ' + (process.env.ADMIN_EMAIL || 'admin@tiendadigital.com'));
-    })().catch(e => { console.error('✗ Seed error:', e.message); p.\$disconnect(); process.exit(1); });
+      console.log('[entrypoint] ✓ Admin created: ' + (process.env.ADMIN_EMAIL || 'admin@tiendadigital.com'));
+    })().catch(e => { console.error('[entrypoint] ✗ Seed error:', e.message); p.\$disconnect(); process.exit(1); });
   "
 else
   echo "[entrypoint] ✓ Admin already exists (${ADMIN_EXISTS} admin user(s))"
 fi
 
 # ── 5) Start the application as non-root user ────────────
-echo "[entrypoint] Starting Next.js server as user nextjs..."
-exec su-exec nextjs node server.js
+echo "[entrypoint] Starting Next.js server as user nextjs (PID $$)..."
+exec gosu nextjs node server.js
