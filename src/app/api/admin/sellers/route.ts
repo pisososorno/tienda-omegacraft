@@ -15,33 +15,51 @@ export async function GET(req: NextRequest) {
         user: {
           select: { id: true, email: true, name: true, disabledAt: true },
         },
+        products: {
+          select: {
+            id: true,
+            orders: {
+              select: { amountUsd: true, status: true },
+            },
+          },
+        },
         _count: { select: { products: true } },
       },
       orderBy: { createdAt: "desc" },
     });
 
     return jsonOk(
-      profiles.map((p) => ({
-        id: p.id,
-        userId: p.userId,
-        displayName: p.displayName,
-        payoutEmail: p.payoutEmail,
-        payoutMethod: p.payoutMethod,
-        status: p.status,
-        canSellPlugins: p.canSellPlugins,
-        canSellMaps: p.canSellMaps,
-        canSellConfigurations: p.canSellConfigurations,
-        canSellSourceCode: p.canSellSourceCode,
-        commissionRate: p.commissionRate.toString(),
-        holdDays: p.holdDays,
-        reserveRate: p.reserveRate.toString(),
-        productCount: p._count.products,
-        userEmail: p.user.email,
-        userName: p.user.name,
-        userDisabled: !!p.user.disabledAt,
-        createdAt: p.createdAt.toISOString(),
-        updatedAt: p.updatedAt.toISOString(),
-      }))
+      profiles.map((p) => {
+        const allOrders = p.products.flatMap((prod) => prod.orders);
+        const paidOrders = allOrders.filter((o) => ["paid", "confirmed"].includes(o.status));
+        const totalRevenue = paidOrders.reduce((sum, o) => sum + Number(o.amountUsd), 0);
+        const totalOrders = allOrders.length;
+        const activeProducts = p._count.products;
+
+        return {
+          id: p.id,
+          userId: p.userId,
+          displayName: p.displayName,
+          payoutEmail: p.payoutEmail,
+          payoutMethod: p.payoutMethod,
+          status: p.status,
+          canSellPlugins: p.canSellPlugins,
+          canSellMaps: p.canSellMaps,
+          canSellConfigurations: p.canSellConfigurations,
+          canSellSourceCode: p.canSellSourceCode,
+          commissionRate: p.commissionRate.toString(),
+          holdDays: p.holdDays,
+          reserveRate: p.reserveRate.toString(),
+          productCount: activeProducts,
+          totalOrders,
+          totalRevenue: totalRevenue.toFixed(2),
+          userEmail: p.user.email,
+          userName: p.user.name,
+          userDisabled: !!p.user.disabledAt,
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+        };
+      })
     );
   } catch (error) {
     console.error("[api/admin/sellers GET]", error);
