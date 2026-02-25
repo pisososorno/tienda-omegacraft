@@ -182,9 +182,28 @@ export default function AdminOrderDetailPage() {
       if (data.valid) {
         alert(`✅ Chain VALID — ${data.totalEvents} events verified.`);
       } else {
-        alert(`❌ Chain BROKEN at sequence #${data.brokenAtSequence}!\nExpected: ${data.expectedHash}\nActual: ${data.actualHash}`);
+        const detail = data.detail ? `\nDetail: ${data.detail}` : "";
+        const msg = `❌ Chain BROKEN at sequence #${data.brokenAtSequence}!\nExpected: ${data.expectedHash}\nActual: ${data.actualHash}${detail}\n\n¿Deseas re-sellar la cadena? (Esto recalcula todos los hashes con serialización canónica)`;
+        if (confirm(msg)) {
+          await resealChain();
+        }
       }
     } catch { alert("Verification failed"); } finally { setActionLoading(null); }
+  }
+
+  async function resealChain() {
+    if (!order) return;
+    setActionLoading("verify");
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/reseal-chain`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Reseal failed"); return; }
+      if (data.chainValidAfter) {
+        alert(`✅ Chain RESEALED — ${data.resealed}/${data.totalEvents} events updated. Chain is now VALID.`);
+      } else {
+        alert(`⚠ Resealed ${data.resealed} events but chain is still invalid. Check server logs.`);
+      }
+    } catch { alert("Reseal failed"); } finally { setActionLoading(null); }
   }
 
   if (loading) {

@@ -15,6 +15,31 @@ RUN npm ci --ignore-scripts
 COPY prisma ./prisma
 RUN npx prisma generate
 
+# ── Stage 1b: Collect serverExternalPackages + transitive deps ──
+FROM deps AS externals
+RUN node -e "\
+const fs = require('fs'), path = require('path');\
+const seeds = ['@react-pdf/renderer', 'archiver'];\
+const collected = new Set();\
+function collect(name) {\
+  if (collected.has(name)) return;\
+  const dir = path.join('/app/node_modules', name);\
+  let pkg;\
+  try { pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')); } catch { return; }\
+  collected.add(name);\
+  for (const d of Object.keys(pkg.dependencies || {})) collect(d);\
+}\
+seeds.forEach(s => collect(s));\
+fs.mkdirSync('/externals', { recursive: true });\
+for (const name of collected) {\
+  const src = path.join('/app/node_modules', name);\
+  const dest = path.join('/externals', name);\
+  fs.mkdirSync(path.dirname(dest), { recursive: true });\
+  fs.cpSync(src, dest, { recursive: true });\
+}\
+console.log('Collected ' + collected.size + ' external packages');\
+"
+
 # ── Stage 2: Build application ────────────────────────────
 FROM base AS builder
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -50,6 +75,11 @@ COPY --from=builder /app/prisma ./prisma
 
 # Copy bcryptjs for entrypoint seed logic
 COPY --from=deps /app/node_modules/bcryptjs ./node_modules/bcryptjs
+
+# Copy serverExternalPackages (@react-pdf/renderer, archiver) + all transitive deps.
+# These packages are NOT bundled by Next.js standalone, so they must be in node_modules at runtime.
+# We use the externals stage (below) which collects them automatically.
+COPY --from=externals /externals/ ./node_modules/
 
 # Copy entrypoint
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh

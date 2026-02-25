@@ -3,6 +3,27 @@ import { prisma } from "./prisma";
 import { sha256 } from "./hashing";
 import { encryptIp, maskIp } from "./privacy";
 
+/**
+ * Canonical JSON serialization — sorts object keys recursively
+ * so the output is deterministic regardless of insertion order.
+ * This is critical because PostgreSQL JSONB reorders keys.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "boolean" || typeof value === "number") return JSON.stringify(value);
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return "[" + value.map(canonicalJson).join(",") + "]";
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const keys = Object.keys(obj).sort();
+    const pairs = keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(obj[k]));
+    return "{" + pairs.join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+
 export interface AppendEventInput {
   orderId: string;
   eventType: string;
@@ -41,12 +62,12 @@ export async function appendEvent(input: AppendEventInput) {
   const prevHash = lastEvent ? lastEvent.eventHash : null;
   const createdAt = new Date();
 
-  // Compute event hash
+  // Compute event hash (canonical JSON for deterministic serialization)
   const hashInput = [
     orderId,
     String(sequenceNumber),
     eventType,
-    JSON.stringify(eventData),
+    canonicalJson(eventData),
     prevHash || "GENESIS",
     createdAt.toISOString(),
   ].join("|");
@@ -95,6 +116,7 @@ export async function verifyChain(orderId: string): Promise<{
   brokenAtSequence: number | null;
   expectedHash?: string;
   actualHash?: string;
+  detail?: string;
 }> {
   const events = await prisma.orderEvent.findMany({
     where: { orderId },
@@ -114,11 +136,26 @@ export async function verifyChain(orderId: string): Promise<{
   let prevHash: string | null = null;
 
   for (const event of events) {
+    // 1. Verify prevHash linkage
+    if (event.prevHash !== prevHash) {
+      return {
+        valid: false,
+        totalEvents: events.length,
+        firstEventAt: events[0].createdAt,
+        lastEventAt: events[events.length - 1].createdAt,
+        brokenAtSequence: event.sequenceNumber,
+        expectedHash: prevHash || "null (genesis)",
+        actualHash: event.prevHash || "null",
+        detail: `prevHash mismatch at seq #${event.sequenceNumber}: expected ${prevHash || "null"}, stored ${event.prevHash || "null"}`,
+      };
+    }
+
+    // 2. Recompute event hash with canonical JSON
     const hashInput = [
       event.orderId,
       String(event.sequenceNumber),
       event.eventType,
-      JSON.stringify(event.eventData),
+      canonicalJson(event.eventData),
       prevHash || "GENESIS",
       event.createdAt.toISOString(),
     ].join("|");
@@ -134,17 +171,7 @@ export async function verifyChain(orderId: string): Promise<{
         brokenAtSequence: event.sequenceNumber,
         expectedHash,
         actualHash: event.eventHash,
-      };
-    }
-
-    // Also verify prevHash linkage
-    if (event.prevHash !== prevHash) {
-      return {
-        valid: false,
-        totalEvents: events.length,
-        firstEventAt: events[0].createdAt,
-        lastEventAt: events[events.length - 1].createdAt,
-        brokenAtSequence: event.sequenceNumber,
+        detail: `eventHash mismatch at seq #${event.sequenceNumber} (${event.eventType})`,
       };
     }
 
@@ -158,4 +185,51 @@ export async function verifyChain(orderId: string): Promise<{
     lastEventAt: events[events.length - 1].createdAt,
     brokenAtSequence: null,
   };
+}
+
+/**
+ * Re-seal the event chain for an order.
+ * Recomputes all hashes using canonical JSON serialization.
+ * Use this to fix chains that were broken by non-deterministic JSON.stringify.
+ */
+export async function resealChain(orderId: string): Promise<{
+  resealed: number;
+  totalEvents: number;
+}> {
+  const events = await prisma.orderEvent.findMany({
+    where: { orderId },
+    orderBy: { sequenceNumber: "asc" },
+  });
+
+  let prevHash: string | null = null;
+  let updated = 0;
+
+  for (const event of events) {
+    const hashInput = [
+      event.orderId,
+      String(event.sequenceNumber),
+      event.eventType,
+      canonicalJson(event.eventData),
+      prevHash || "GENESIS",
+      event.createdAt.toISOString(),
+    ].join("|");
+
+    const newHash = sha256(hashInput);
+    const needsUpdate = event.prevHash !== prevHash || event.eventHash !== newHash;
+
+    if (needsUpdate) {
+      await prisma.orderEvent.update({
+        where: { id: event.id },
+        data: {
+          prevHash,
+          eventHash: newHash,
+        },
+      });
+      updated++;
+    }
+
+    prevHash = newHash;
+  }
+
+  return { resealed: updated, totalEvents: events.length };
 }

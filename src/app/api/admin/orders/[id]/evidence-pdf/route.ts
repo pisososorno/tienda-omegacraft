@@ -53,8 +53,13 @@ export async function GET(
         "Cache-Control": "no-store",
       },
     });
-  } catch (error) {
-    console.error("[admin/orders/id/evidence-pdf]", error);
-    return jsonError("Internal server error", 500);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("[admin/orders/id/evidence-pdf] FAILED:", err.message);
+    console.error("[admin/orders/id/evidence-pdf] Stack:", err.stack);
+    if (err.message.includes("Cannot find module")) {
+      console.error("[admin/orders/id/evidence-pdf] Missing dependency — ensure @react-pdf/renderer is installed in Docker image");
+    }
+    return jsonError(`PDF generation failed: ${err.message}`, 500);
   }
 }
