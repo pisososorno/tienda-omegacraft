@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { appendEvent } from "@/lib/forensic";
 import { createPayPalOrder } from "@/lib/paypal";
 import { generateOrderNumber } from "@/lib/hashing";
-import { encryptIp, calculateRetentionExpiry } from "@/lib/privacy";
+import { encryptIp, maskIp, calculateRetentionExpiry } from "@/lib/privacy";
 import { createProductSnapshot, buildProductSnapshotData } from "@/lib/snapshot";
 import { getClientIp, getUserAgent, jsonError, jsonOk } from "@/lib/api-helpers";
 import { resolveGeoIp } from "@/lib/geoip";
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
         productSnapshot: snapshotData as unknown as Prisma.InputJsonValue,
         buyerName: buyerName.trim(),
         buyerEmail,
-        buyerIp: ip.split(".").slice(0, 1).join(".") + ".xxx.xxx.xxx", // masked
+        buyerIp: maskIp(ip),
         buyerIpEncrypted,
         buyerUserAgent: ua,
         buyerCountry: geo.country,
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
         downloadLimit: product.downloadLimit,
         termsVersionId: terms.id,
         termsAcceptedAt: now,
-        termsAcceptedIp: ip.split(".").slice(0, 1).join(".") + ".xxx.xxx.xxx", // masked
+        termsAcceptedIp: maskIp(ip),
         termsAcceptedIpEncrypted: termsIpEncrypted,
         termsAcceptedUa: ua,
         retentionExpiresAt: calculateRetentionExpiry(now),

@@ -150,7 +150,7 @@ model Order {
   productSnapshot           Json        @map("product_snapshot") // Immutable JSON copy of product at purchase time
   buyerName                 String      @default("") @map("buyer_name") @db.VarChar(300)
   buyerEmail                String      @map("buyer_email") @db.VarChar(500)
-  buyerIp                   String      @map("buyer_ip") @db.VarChar(45)
+  buyerIp                   String      @map("buyer_ip") @db.VarChar(100)
   buyerUserAgent            String?     @map("buyer_user_agent") @db.Text
   buyerCountry              String?     @map("buyer_country") @db.VarChar(100)
   buyerCity                 String?     @map("buyer_city") @db.VarChar(200)
@@ -177,7 +177,7 @@ model Order {
   // Terms acceptance
   termsVersionId            String      @map("terms_version_id")
   termsAcceptedAt           DateTime    @map("terms_accepted_at") @db.Timestamptz
-  termsAcceptedIp           String      @map("terms_accepted_ip") @db.VarChar(45)
+  termsAcceptedIp           String      @map("terms_accepted_ip") @db.VarChar(100)
   termsAcceptedUa           String?     @map("terms_accepted_ua") @db.Text
 
   // Delivery package
