@@ -1,17 +1,14 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { invalidateSettingsCache, DEFAULT_APPEARANCE } from "@/lib/settings";
 import type { AppearanceSettings } from "@/lib/settings";
+import { withAdminAuth, isAuthError, ROLES_SUPER } from "@/lib/rbac";
 
 // GET /api/admin/settings — load current settings
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function GET(req: NextRequest) {
+  const auth = await withAdminAuth(req, { roles: ROLES_SUPER });
+  if (isAuthError(auth)) return auth;
 
   try {
     let row = await prisma.siteSettings.findUnique({
@@ -54,11 +51,9 @@ export async function GET() {
 }
 
 // PUT /api/admin/settings — save settings
-export async function PUT(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function PUT(req: NextRequest) {
+  const auth = await withAdminAuth(req, { roles: ROLES_SUPER });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();

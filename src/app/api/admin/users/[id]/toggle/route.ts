@@ -1,20 +1,17 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getClientIp, getUserAgent, jsonError, jsonOk } from "@/lib/api-helpers";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_SUPER, logAudit } from "@/lib/rbac";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_SUPER });
+  if (isAuthError(auth)) return auth;
 
-  const actorId = (session.user as Record<string, unknown>).id as string;
-
-  if (actorId === id) {
+  if (auth.userId === id) {
     return jsonError("Cannot disable your own account", 400);
   }
 
@@ -29,19 +26,7 @@ export async function POST(
       select: { id: true, email: true, name: true, disabledAt: true },
     });
 
-    const ip = getClientIp(req);
-    const ua = getUserAgent(req);
-
-    await prisma.adminAuditLog.create({
-      data: {
-        actorId,
-        targetId: id,
-        action: isDisabling ? "admin_disabled" : "admin_enabled",
-        metadata: { email: target.email },
-        ipAddress: ip,
-        userAgent: ua,
-      },
-    });
+    await logAudit(req, auth.userId, isDisabling ? "admin_disabled" : "admin_enabled", { email: target.email }, id);
 
     return jsonOk(updated);
   } catch (error) {

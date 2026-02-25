@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getClientIp, getUserAgent, jsonError, jsonOk } from "@/lib/api-helpers";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, logAudit } from "@/lib/rbac";
 import { compare, hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -17,8 +16,8 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();
@@ -28,9 +27,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { currentPassword, newPassword } = parsed.data;
-    const actorId = (session.user as Record<string, unknown>).id as string;
 
-    const admin = await prisma.adminUser.findUnique({ where: { id: actorId } });
+    const admin = await prisma.adminUser.findUnique({ where: { id: auth.userId } });
     if (!admin) return jsonError("Account not found", 404);
 
     const valid = await compare(currentPassword, admin.passwordHash);
@@ -38,23 +36,11 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await hash(newPassword, 12);
     await prisma.adminUser.update({
-      where: { id: actorId },
+      where: { id: auth.userId },
       data: { passwordHash },
     });
 
-    const ip = getClientIp(req);
-    const ua = getUserAgent(req);
-
-    await prisma.adminAuditLog.create({
-      data: {
-        actorId,
-        targetId: actorId,
-        action: "password_changed",
-        metadata: { selfChange: true },
-        ipAddress: ip,
-        userAgent: ua,
-      },
-    });
+    await logAudit(req, auth.userId, "password_changed", { selfChange: true }, auth.userId);
 
     return jsonOk({ success: true });
   } catch (error) {

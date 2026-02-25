@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getClientIp, getUserAgent, jsonError, jsonOk } from "@/lib/api-helpers";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_SUPER, logAudit } from "@/lib/rbac";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -22,8 +21,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_SUPER });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();
@@ -34,10 +33,6 @@ export async function PATCH(
 
     const target = await prisma.adminUser.findUnique({ where: { id } });
     if (!target) return jsonError("User not found", 404);
-
-    const actorId = (session.user as Record<string, unknown>).id as string;
-    const ip = getClientIp(req);
-    const ua = getUserAgent(req);
 
     const updateData: Record<string, unknown> = {};
     if (parsed.data.name) updateData.name = parsed.data.name;
@@ -55,16 +50,7 @@ export async function PATCH(
       select: { id: true, email: true, name: true },
     });
 
-    await prisma.adminAuditLog.create({
-      data: {
-        actorId,
-        targetId: id,
-        action: parsed.data.password ? "password_changed" : "admin_user_updated",
-        metadata: { fields: Object.keys(updateData) },
-        ipAddress: ip,
-        userAgent: ua,
-      },
-    });
+    await logAudit(req, auth.userId, parsed.data.password ? "password_changed" : "admin_user_updated", { fields: Object.keys(updateData) }, id);
 
     return jsonOk(updated);
   } catch (error) {

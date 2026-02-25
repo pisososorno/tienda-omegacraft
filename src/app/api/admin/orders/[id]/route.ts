@@ -1,18 +1,22 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { verifyChain } from "@/lib/forensic";
-import { maskIp } from "@/lib/privacy";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, verifyOrderOwnership, isSeller } from "@/lib/rbac";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
+
+  // SELLER: verify ownership
+  if (isSeller(auth)) {
+    const owns = await verifyOrderOwnership(auth, id);
+    if (!owns) return jsonError("Order not found", 404);
+  }
 
   try {
     const order = await prisma.order.findUnique({
@@ -30,7 +34,23 @@ export async function GET(
 
     if (!order) return jsonError("Order not found", 404);
 
-    // Verify chain integrity
+    // SELLER: minimal payload (no forensic, paypal, buyer PII)
+    if (isSeller(auth)) {
+      return jsonOk({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        amountUsd: order.amountUsd.toString(),
+        status: order.status,
+        createdAt: order.createdAt.toISOString(),
+        product: {
+          id: order.product.id,
+          name: order.product.name,
+          category: order.product.category,
+        },
+      });
+    }
+
+    // ADMIN: full payload
     const chainIntegrity = await verifyChain(order.id);
 
     return jsonOk({

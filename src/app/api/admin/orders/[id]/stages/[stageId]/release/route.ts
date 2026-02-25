@@ -1,19 +1,18 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withAdminAuth, isAuthError, ROLES_ADMIN } from "@/lib/rbac";
 import { appendEvent } from "@/lib/forensic";
 import { generateDownloadToken } from "@/lib/tokens";
 import { sendStageReleasedEmail } from "@/lib/mailer";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; stageId: string }> }
 ) {
   const { id, stageId } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ADMIN });
+  if (isAuthError(auth)) return auth;
 
   try {
     const order = await prisma.order.findUnique({
@@ -62,7 +61,7 @@ export async function POST(
         stageId: stage.id,
         stageType: stage.stageType,
         stageOrder: stage.stageOrder,
-        releasedBy: session.user.email,
+        releasedBy: auth.email,
         filename: stage.filename,
         sha256Hash: stage.sha256Hash,
       },
@@ -113,7 +112,7 @@ export async function POST(
       stageId: stage.id,
       stageType: stage.stageType,
       releasedAt: now.toISOString(),
-      releasedBy: session.user.email,
+      releasedBy: auth.email,
       downloadUrl,
     });
   } catch (error) {

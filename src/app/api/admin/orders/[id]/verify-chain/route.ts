@@ -1,16 +1,15 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { verifyChain } from "@/lib/forensic";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ADMIN } from "@/lib/rbac";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ADMIN });
+  if (isAuthError(auth)) return auth;
 
   try {
     const result = await verifyChain(id);

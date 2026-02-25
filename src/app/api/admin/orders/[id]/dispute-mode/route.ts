@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withAdminAuth, isAuthError, ROLES_ADMIN } from "@/lib/rbac";
 import { appendEvent, verifyChain } from "@/lib/forensic";
 import { generateEvidencePdf, type EvidenceOrderData } from "@/lib/evidence-pdf";
 import { uploadFile } from "@/lib/storage";
@@ -24,12 +23,12 @@ import { getSettings } from "@/lib/settings";
  * 9. Log admin.evidence_pdf_generated event.
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ADMIN });
+  if (isAuthError(auth)) return auth;
 
   try {
     const order = await prisma.order.findUnique({
@@ -54,7 +53,7 @@ export async function POST(
     const chainResult = await verifyChain(order.id);
 
     const now = new Date();
-    const adminEmail = session.user.email;
+    const adminEmail = auth.email;
 
     // 2. Freeze order + revoke downloads atomically
     await prisma.order.update({

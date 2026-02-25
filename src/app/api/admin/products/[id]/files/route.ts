@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, verifyProductOwnership, isSeller } from "@/lib/rbac";
 import { uploadFile, deleteFile } from "@/lib/storage";
 import crypto from "crypto";
 
@@ -17,12 +16,17 @@ const ALLOWED_EXTENSIONS = [
 
 // GET — list files for a product
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
+
+  if (isSeller(auth)) {
+    const owns = await verifyProductOwnership(auth, id);
+    if (!owns) return jsonError("Product not found", 404);
+  }
 
   const files = await prisma.productFile.findMany({
     where: { productId: id },
@@ -43,12 +47,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
 
-  // Verify product exists
+  // Verify product exists + ownership
   const product = await prisma.product.findUnique({ where: { id } });
   if (!product) return jsonError("Product not found", 404);
+  if (isSeller(auth) && product.sellerId !== auth.sellerId) return jsonError("Product not found", 404);
 
   try {
     const formData = await req.formData();
@@ -118,8 +123,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
+
+  if (isSeller(auth)) {
+    const owns = await verifyProductOwnership(auth, id);
+    if (!owns) return jsonError("Product not found", 404);
+  }
 
   const { searchParams } = new URL(req.url);
   const fileId = searchParams.get("fileId");

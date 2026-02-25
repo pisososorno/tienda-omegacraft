@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withAdminAuth, isAuthError, ROLES_ADMIN } from "@/lib/rbac";
 import { appendEvent } from "@/lib/forensic";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 
@@ -15,8 +14,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ADMIN });
+  if (isAuthError(auth)) return auth;
 
   try {
     let reason = "admin_manual_revoke";
@@ -45,7 +44,7 @@ export async function POST(
       return jsonError("Downloads already revoked for this order", 409);
     }
 
-    const adminEmail = session.user.email;
+    const adminEmail = auth.email;
 
     // Revoke downloads (do NOT change status to frozen)
     await prisma.order.update({

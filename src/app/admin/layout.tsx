@@ -16,6 +16,8 @@ import {
   Users,
   UserCog,
   FileText,
+  Store,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SessionProvider } from "next-auth/react";
@@ -46,6 +48,24 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   if (!session) return null;
 
+  const role = (session.user as Record<string, unknown>)?.role as string || "SELLER";
+  const isSuperAdmin = role === "SUPER_ADMIN";
+  const isStoreAdmin = role === "STORE_ADMIN";
+  const isSeller = role === "SELLER";
+
+  const navItem = (href: string, label: string, icon: React.ReactNode, match?: string) => (
+    <Link href={href} key={href}>
+      <Button
+        variant={(match ? pathname?.startsWith(match) : pathname === href) ? "secondary" : "ghost"}
+        className="w-full justify-start gap-2"
+        size="sm"
+      >
+        {icon}
+        {label}
+      </Button>
+    </Link>
+  );
+
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
@@ -53,80 +73,40 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         <div className="p-4 border-b">
           <Link href="/admin" className="flex items-center gap-2 font-bold text-lg">
             <Package className="h-5 w-5 text-primary" />
-            Admin Panel
+            {isSeller ? "Seller Panel" : "Admin Panel"}
           </Link>
+          {role && (
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 block">
+              {role.replace("_", " ")}
+            </span>
+          )}
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          <Link href="/admin">
-            <Button
-              variant={pathname === "/admin" ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              Dashboard
-            </Button>
-          </Link>
-          <Link href="/admin/products">
-            <Button
-              variant={pathname?.startsWith("/admin/products") ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <Box className="h-4 w-4" />
-              Products
-            </Button>
-          </Link>
-          <Link href="/admin/orders">
-            <Button
-              variant={pathname?.startsWith("/admin/orders") ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <ShoppingCart className="h-4 w-4" />
-              Orders
-            </Button>
-          </Link>
-          <Link href="/admin/users">
-            <Button
-              variant={pathname?.startsWith("/admin/users") ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <Users className="h-4 w-4" />
-              Admin Users
-            </Button>
-          </Link>
-          <Link href="/admin/terms">
-            <Button
-              variant={pathname?.startsWith("/admin/terms") ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <FileText className="h-4 w-4" />
-              Terms & Privacy
-            </Button>
-          </Link>
-          <Link href="/admin/settings">
-            <Button
-              variant={pathname?.startsWith("/admin/settings") ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <Settings className="h-4 w-4" />
-              Settings
-            </Button>
-          </Link>
-          <Link href="/admin/account">
-            <Button
-              variant={pathname?.startsWith("/admin/account") ? "secondary" : "ghost"}
-              className="w-full justify-start gap-2"
-              size="sm"
-            >
-              <UserCog className="h-4 w-4" />
-              My Account
-            </Button>
-          </Link>
+          {navItem("/admin", "Dashboard", <LayoutDashboard className="h-4 w-4" />)}
+
+          {/* Products: todos ven, pero SELLER ve "Mis Productos" */}
+          {navItem("/admin/products", isSeller ? "Mis Productos" : "Products", <Box className="h-4 w-4" />, "/admin/products")}
+
+          {/* Orders: todos ven, pero SELLER ve "Mis Órdenes" */}
+          {navItem("/admin/orders", isSeller ? "Mis Órdenes" : "Orders", <ShoppingCart className="h-4 w-4" />, "/admin/orders")}
+
+          {/* Sellers: solo SUPER_ADMIN */}
+          {isSuperAdmin && navItem("/admin/sellers", "Sellers", <Store className="h-4 w-4" />, "/admin/sellers")}
+
+          {/* Users: solo SUPER_ADMIN */}
+          {isSuperAdmin && navItem("/admin/users", "Admin Users", <Users className="h-4 w-4" />, "/admin/users")}
+
+          {/* Terms: SUPER_ADMIN y STORE_ADMIN */}
+          {(isSuperAdmin || isStoreAdmin) && navItem("/admin/terms", "Terms & Privacy", <FileText className="h-4 w-4" />, "/admin/terms")}
+
+          {/* Settings: solo SUPER_ADMIN */}
+          {isSuperAdmin && navItem("/admin/settings", "Settings", <Settings className="h-4 w-4" />, "/admin/settings")}
+
+          {/* Mi Perfil: solo SELLER */}
+          {isSeller && navItem("/admin/my-profile", "Mi Perfil", <User className="h-4 w-4" />, "/admin/my-profile")}
+
+          {/* Account: todos */}
+          {navItem("/admin/account", "Mi Cuenta", <UserCog className="h-4 w-4" />, "/admin/account")}
         </nav>
         <div className="p-4 border-t">
           <div className="text-xs text-muted-foreground mb-2 truncate">

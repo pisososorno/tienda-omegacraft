@@ -1,15 +1,16 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, scopeProductsWhere, isSeller, canSellCategory, logAudit } from "@/lib/rbac";
+import type { ProductCategory } from "@prisma/client";
 
-export async function GET(_req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+export async function GET(req: NextRequest) {
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
 
   try {
     const products = await prisma.product.findMany({
+      where: scopeProductsWhere(auth),
       orderBy: { createdAt: "desc" },
       include: {
         images: { where: { isPrimary: true }, take: 1 },
@@ -41,8 +42,8 @@ export async function GET(_req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();
@@ -52,10 +53,24 @@ export async function POST(req: NextRequest) {
       return jsonError("Missing required fields: name, slug, description, category, priceUsd");
     }
 
+    // SELLER: validate category permission
+    if (isSeller(auth) && !canSellCategory(auth, category as ProductCategory)) {
+      await logAudit(req, auth.userId, "seller_category_denied", { category, productSlug: slug });
+      return jsonError("No tienes permiso para vender en la categoría: " + category, 403);
+    }
+
+    // SELLER in pending: can only create as draft (isActive=false)
+    const effectiveIsActive = isSeller(auth) && auth.sellerStatus === "pending"
+      ? false
+      : isActive !== false;
+
     const existing = await prisma.product.findUnique({ where: { slug } });
     if (existing) {
       return jsonError("A product with this slug already exists", 409);
     }
+
+    // SELLER: auto-assign sellerId. ADMIN: sellerId=null (official store product)
+    const sellerId = isSeller(auth) ? auth.sellerId : null;
 
     const product = await prisma.product.create({
       data: {
@@ -69,9 +84,12 @@ export async function POST(req: NextRequest) {
         videoUrl: videoUrl || null,
         downloadLimit: downloadLimit || 3,
         downloadExpiresDays: downloadExpiresDays || 7,
-        isActive: isActive !== false,
+        isActive: effectiveIsActive,
+        sellerId,
       },
     });
+
+    await logAudit(req, auth.userId, "product_created", { productId: product.id, slug, category, sellerId });
 
     return jsonOk(
       { id: product.id, slug: product.slug, name: product.name },

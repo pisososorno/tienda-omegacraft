@@ -1,16 +1,15 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, verifyProductOwnership, isSeller } from "@/lib/rbac";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();
@@ -20,6 +19,7 @@ export async function POST(
 
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) return jsonError("Product not found", 404);
+    if (isSeller(auth) && product.sellerId !== auth.sellerId) return jsonError("Product not found", 404);
 
     // If setting as primary, unset current primary
     if (isPrimary) {
@@ -57,8 +57,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
+
+  if (isSeller(auth)) {
+    const owns = await verifyProductOwnership(auth, id);
+    if (!owns) return jsonError("Product not found", 404);
+  }
 
   try {
     const body = await req.json();
@@ -89,8 +94,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
+
+  if (isSeller(auth)) {
+    const owns = await verifyProductOwnership(auth, id);
+    if (!owns) return jsonError("Product not found", 404);
+  }
 
   try {
     const { searchParams } = new URL(req.url);

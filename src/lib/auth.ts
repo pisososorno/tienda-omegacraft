@@ -16,6 +16,7 @@ export const authOptions: NextAuthOptions = {
 
         const admin = await prisma.adminUser.findUnique({
           where: { email: credentials.email },
+          include: { sellerProfile: { select: { id: true, status: true } } },
         });
 
         if (!admin) return null;
@@ -34,6 +35,9 @@ export const authOptions: NextAuthOptions = {
           id: admin.id,
           email: admin.email,
           name: admin.name,
+          role: admin.role,
+          sellerId: admin.sellerProfile?.id || null,
+          sellerStatus: admin.sellerProfile?.status || null,
         };
       },
     }),
@@ -49,12 +53,19 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        (token as Record<string, unknown>).role = (user as unknown as Record<string, unknown>).role;
+        (token as Record<string, unknown>).sellerId = (user as unknown as Record<string, unknown>).sellerId;
+        (token as Record<string, unknown>).sellerStatus = (user as unknown as Record<string, unknown>).sellerStatus;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
-        (session.user as Record<string, unknown>).id = token.id;
+        const u = session.user as Record<string, unknown>;
+        u.id = token.id;
+        u.role = (token as Record<string, unknown>).role;
+        u.sellerId = (token as Record<string, unknown>).sellerId;
+        u.sellerStatus = (token as Record<string, unknown>).sellerStatus;
       }
       return session;
     },

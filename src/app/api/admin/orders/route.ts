@@ -1,12 +1,11 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, scopeOrdersWhere, isSeller } from "@/lib/rbac";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -15,7 +14,8 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status") || undefined;
     const search = searchParams.get("search") || undefined;
 
-    const where: Record<string, unknown> = {};
+    // Scoping: SELLER only sees orders for their products
+    const where: Record<string, unknown> = { ...scopeOrdersWhere(auth) };
     if (status) where.status = status;
     if (search) {
       where.OR = [
@@ -39,22 +39,31 @@ export async function GET(req: NextRequest) {
       prisma.order.count({ where }),
     ]);
 
-    return jsonOk({
-      orders: orders.map((o) => ({
+    // SELLER: filtered payload (no forensic/paypal details)
+    const mapOrder = (o: (typeof orders)[number]) => {
+      const base = {
         id: o.id,
         orderNumber: o.orderNumber,
-        buyerEmail: o.buyerEmail,
         productName: o.product.name,
         productCategory: o.product.category,
         amountUsd: o.amountUsd.toString(),
         status: o.status,
+        createdAt: o.createdAt.toISOString(),
+      };
+      if (isSeller(auth)) return base;
+      return {
+        ...base,
+        buyerEmail: o.buyerEmail,
         paypalOrderId: o.paypalOrderId,
         downloadCount: o.downloadCount,
         downloadLimit: o.downloadLimit,
         evidenceFrozenAt: o.evidenceFrozenAt?.toISOString() || null,
-        createdAt: o.createdAt.toISOString(),
         eventCount: o._count.events,
-      })),
+      };
+    };
+
+    return jsonOk({
+      orders: orders.map(mapOrder),
       pagination: {
         page,
         limit,

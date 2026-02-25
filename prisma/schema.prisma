@@ -48,6 +48,19 @@ enum LicenseStatus {
   expired
 }
 
+enum UserRole {
+  SUPER_ADMIN
+  STORE_ADMIN
+  SELLER
+}
+
+enum SellerStatus {
+  pending
+  active
+  suspended
+  disabled
+}
+
 // ── PRODUCTS ───────────────────────────────────────────────
 
 model Product {
@@ -63,16 +76,19 @@ model Product {
   isActive            Boolean          @default(true) @map("is_active")
   downloadLimit       Int              @default(3) @map("download_limit")
   downloadExpiresDays Int              @default(7) @map("download_expires_days")
+  sellerId            String?          @map("seller_id")
   createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz
   updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz
 
-  files  ProductFile[]
-  images ProductImage[]
-  orders Order[]
+  seller   SellerProfile? @relation(fields: [sellerId], references: [id])
+  files    ProductFile[]
+  images   ProductImage[]
+  orders   Order[]
   licenses License[]
 
   @@index([category])
   @@index([slug])
+  @@index([sellerId])
   @@map("products")
 }
 
@@ -355,14 +371,44 @@ model AdminUser {
   email        String    @unique @db.VarChar(500)
   passwordHash String    @map("password_hash") @db.VarChar(255)
   name         String    @db.VarChar(200)
+  role         UserRole  @default(SELLER)
   disabledAt   DateTime? @map("disabled_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
 
+  sellerProfile     SellerProfile?
   auditLogsAsActor  AdminAuditLog[] @relation("AuditActor")
   auditLogsAsTarget AdminAuditLog[] @relation("AuditTarget")
 
   @@map("admin_users")
+}
+
+// ── SELLER PROFILES ─────────────────────────────────────
+
+model SellerProfile {
+  id                    String        @id @default(uuid())
+  userId                String        @unique @map("user_id")
+  displayName           String        @map("display_name") @db.VarChar(200)
+  payoutEmail           String?       @map("payout_email") @db.VarChar(500)
+  payoutMethod          String        @default("paypal") @map("payout_method") @db.VarChar(50)
+  status                SellerStatus  @default(pending)
+
+  canSellPlugins        Boolean @default(false) @map("can_sell_plugins")
+  canSellMaps           Boolean @default(false) @map("can_sell_maps")
+  canSellConfigurations Boolean @default(false) @map("can_sell_configurations")
+  canSellSourceCode     Boolean @default(false) @map("can_sell_source_code")
+
+  commissionRate        Decimal    @default(0.20) @map("commission_rate") @db.Decimal(5, 4)
+  holdDays              Int        @default(14) @map("hold_days")
+  reserveRate           Decimal    @default(0.05) @map("reserve_rate") @db.Decimal(5, 4)
+
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  user     AdminUser @relation(fields: [userId], references: [id])
+  products Product[]
+
+  @@map("seller_profiles")
 }
 
 // ── ADMIN AUDIT LOG ───────────────────────────────────

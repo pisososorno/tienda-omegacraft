@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getClientIp, getUserAgent, jsonError, jsonOk } from "@/lib/api-helpers";
+import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_SUPER, logAudit } from "@/lib/rbac";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -17,15 +16,16 @@ const createSchema = z.object({
     .regex(/[0-9]/, "Password must contain at least one number"),
 });
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+export async function GET(req: NextRequest) {
+  const auth = await withAdminAuth(req, { roles: ROLES_SUPER });
+  if (isAuthError(auth)) return auth;
 
   const users = await prisma.adminUser.findMany({
     select: {
       id: true,
       email: true,
       name: true,
+      role: true,
       disabledAt: true,
       createdAt: true,
       lastLoginAt: true,
@@ -37,8 +37,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_SUPER });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();
@@ -58,20 +58,7 @@ export async function POST(req: NextRequest) {
       select: { id: true, email: true, name: true, createdAt: true },
     });
 
-    const actorId = (session.user as Record<string, unknown>).id as string;
-    const ip = getClientIp(req);
-    const ua = getUserAgent(req);
-
-    await prisma.adminAuditLog.create({
-      data: {
-        actorId,
-        targetId: user.id,
-        action: "admin_user_created",
-        metadata: { email, name },
-        ipAddress: ip,
-        userAgent: ua,
-      },
-    });
+    await logAudit(req, auth.userId, "admin_user_created", { email, name }, user.id);
 
     return jsonOk(user, 201);
   } catch (error) {

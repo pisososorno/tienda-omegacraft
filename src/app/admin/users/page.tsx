@@ -18,6 +18,7 @@ interface AdminUser {
   id: string;
   email: string;
   name: string;
+  role: string;
   disabledAt: string | null;
   createdAt: string;
   lastLoginAt: string | null;
@@ -282,6 +283,7 @@ export default function AdminUsersPage() {
             <tr className="border-b bg-muted/50">
               <th className="text-left p-3 font-medium">Name</th>
               <th className="text-left p-3 font-medium">Email</th>
+              <th className="text-left p-3 font-medium">Role</th>
               <th className="text-left p-3 font-medium">Status</th>
               <th className="text-left p-3 font-medium">Last Login</th>
               <th className="text-left p-3 font-medium">Created</th>
@@ -293,6 +295,20 @@ export default function AdminUsersPage() {
               <tr key={user.id} className="border-b last:border-0">
                 <td className="p-3 font-medium">{user.name}</td>
                 <td className="p-3 text-muted-foreground">{user.email}</td>
+                <td className="p-3">
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${
+                      user.role === "SUPER_ADMIN"
+                        ? "border-violet-300 text-violet-700 bg-violet-50"
+                        : user.role === "STORE_ADMIN"
+                        ? "border-blue-300 text-blue-700 bg-blue-50"
+                        : "border-amber-300 text-amber-700 bg-amber-50"
+                    }`}
+                  >
+                    {user.role.replace("_", " ")}
+                  </Badge>
+                </td>
                 <td className="p-3">
                   {user.disabledAt ? (
                     <Badge variant="destructive" className="text-xs">

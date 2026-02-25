@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withAdminAuth, isAuthError, ROLES_ADMIN } from "@/lib/rbac";
 import { verifyChain } from "@/lib/forensic";
 import { generateEvidencePdf, type EvidenceOrderData } from "@/lib/evidence-pdf";
 import { jsonError } from "@/lib/api-helpers";
@@ -12,12 +11,12 @@ import { getSettings } from "@/lib/settings";
  * Uses @react-pdf/renderer for production-grade PDF generation.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ADMIN });
+  if (isAuthError(auth)) return auth;
 
   try {
     const order = await prisma.order.findUnique({
@@ -35,7 +34,7 @@ export async function GET(
     if (!order) return jsonError("Order not found", 404);
 
     const chainResult = await verifyChain(order.id);
-    const generatedBy = session.user.email;
+    const generatedBy = auth.email;
 
     const { storeName } = await getSettings();
     const { buffer, filename } = await generateEvidencePdf(

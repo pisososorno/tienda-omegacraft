@@ -1,21 +1,23 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, scopeOrdersWhere } from "@/lib/rbac";
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+export async function GET(req: NextRequest) {
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
 
   try {
+    const scope = scopeOrdersWhere(auth);
+
     const [totalOrders, disputedOrders, frozenOrders, revenueResult] =
       await Promise.all([
-        prisma.order.count(),
-        prisma.order.count({ where: { status: "disputed" } }),
-        prisma.order.count({ where: { status: "frozen" } }),
+        prisma.order.count({ where: scope }),
+        prisma.order.count({ where: { ...scope, status: "disputed" } }),
+        prisma.order.count({ where: { ...scope, status: "frozen" } }),
         prisma.order.aggregate({
           _sum: { amountUsd: true },
-          where: { status: { in: ["paid", "confirmed"] } },
+          where: { ...scope, status: { in: ["paid", "confirmed"] } },
         }),
       ]);
 

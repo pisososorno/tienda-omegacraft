@@ -1,16 +1,22 @@
 import { NextRequest } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
+import { withAdminAuth, isAuthError, ROLES_ALL, verifyProductOwnership, isSeller, canSellCategory, logAudit } from "@/lib/rbac";
+import type { ProductCategory } from "@prisma/client";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL });
+  if (isAuthError(auth)) return auth;
+
+  // SELLER: verify ownership
+  if (isSeller(auth)) {
+    const owns = await verifyProductOwnership(auth, id);
+    if (!owns) return jsonError("Product not found", 404);
+  }
 
   try {
     const product = await prisma.product.findUnique({
@@ -57,8 +63,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
 
   try {
     const body = await req.json();
@@ -69,6 +75,22 @@ export async function PUT(
 
     const existing = await prisma.product.findUnique({ where: { id } });
     if (!existing) return jsonError("Product not found", 404);
+
+    // SELLER: can only edit own products, never sellerId=null
+    if (isSeller(auth)) {
+      if (existing.sellerId !== auth.sellerId) return jsonError("Product not found", 404);
+    }
+
+    // SELLER: validate category if changing
+    if (isSeller(auth) && category !== undefined && !canSellCategory(auth, category as ProductCategory)) {
+      await logAudit(req, auth.userId, "seller_category_denied", { category, productId: id });
+      return jsonError("No tienes permiso para esa categor\u00eda: " + category, 403);
+    }
+
+    // SELLER in pending: cannot publish (force isActive=false)
+    const effectiveIsActive = isSeller(auth) && auth.sellerStatus === "pending"
+      ? false
+      : isActive;
 
     if (slug && slug !== existing.slug) {
       const slugTaken = await prisma.product.findUnique({ where: { slug } });
@@ -88,9 +110,11 @@ export async function PUT(
         ...(videoUrl !== undefined && { videoUrl }),
         ...(downloadLimit !== undefined && { downloadLimit }),
         ...(downloadExpiresDays !== undefined && { downloadExpiresDays }),
-        ...(isActive !== undefined && { isActive }),
+        ...(effectiveIsActive !== undefined && { isActive: effectiveIsActive }),
       },
     });
+
+    await logAudit(req, auth.userId, "product_updated", { productId: id, fields: Object.keys(body) });
 
     return jsonOk({
       id: product.id,
@@ -104,12 +128,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const session = await getServerSession(authOptions);
-  if (!session) return jsonError("Unauthorized", 401);
+  const auth = await withAdminAuth(req, { roles: ROLES_ALL, requireActiveSeller: true });
+  if (isAuthError(auth)) return auth;
 
   try {
     const product = await prisma.product.findUnique({
@@ -118,6 +142,11 @@ export async function DELETE(
     });
 
     if (!product) return jsonError("Product not found", 404);
+
+    // SELLER: can only delete own products
+    if (isSeller(auth)) {
+      if (product.sellerId !== auth.sellerId) return jsonError("Product not found", 404);
+    }
 
     if (product._count.orders > 0) {
       await prisma.product.update({
@@ -130,6 +159,8 @@ export async function DELETE(
     await prisma.productImage.deleteMany({ where: { productId: id } });
     await prisma.productFile.deleteMany({ where: { productId: id } });
     await prisma.product.delete({ where: { id } });
+
+    await logAudit(req, auth.userId, "product_deleted", { productId: id, slug: product.slug });
 
     return jsonOk({ action: "deleted" });
   } catch (error) {
