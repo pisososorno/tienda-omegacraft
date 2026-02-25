@@ -46,7 +46,7 @@ const categoryColors: Record<string, string> = {
 export default function LandingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const { storeSlogan, heroTitle, heroDescription } = useSiteSettings();
+  const { storeSlogan, heroTitle, heroDescription, appearance } = useSiteSettings();
 
   useEffect(() => {
     fetch("/api/products")
@@ -62,9 +62,22 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
+      <section
+        className="relative overflow-hidden"
+        style={
+          appearance.heroBgType === "solid"
+            ? { backgroundColor: appearance.heroBgSolid }
+            : appearance.heroBgType === "image" && appearance.heroBgImage
+              ? { backgroundColor: "#0f172a" }
+              : undefined
+        }
+      >
         <div className="absolute inset-0">
-          <img src="/images/hero/hero-bg.svg" alt="" className="w-full h-full object-cover" />
+          {appearance.heroBgType === "image" && appearance.heroBgImage ? (
+            <img src={appearance.heroBgImage} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <img src="/images/hero/hero-bg.svg" alt="" className="w-full h-full object-cover" />
+          )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-50/10" />
 

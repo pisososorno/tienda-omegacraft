@@ -10,7 +10,8 @@ import { splitStoreName } from "@/lib/settings";
 export function Navbar() {
   const pathname = usePathname();
   const isHome = pathname === "/home" || pathname === "/";
-  const { storeName, logoUrl } = useSiteSettings();
+  const { storeName, logoUrl, appearance } = useSiteSettings();
+  const logoH = appearance?.logoHeight || 32;
   const { prefix, highlight } = splitStoreName(storeName);
 
   return (
@@ -25,7 +26,7 @@ export function Navbar() {
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5 group">
           {logoUrl ? (
-            <img src={logoUrl} alt={storeName} className="h-8 max-w-[160px] object-contain" />
+            <img src={logoUrl} alt={storeName} style={{ height: `${logoH}px` }} className="max-w-[200px] object-contain" />
           ) : (
             <>
               <div className={`p-1.5 rounded-lg ${isHome ? "bg-indigo-500/20" : "bg-indigo-50"}`}>

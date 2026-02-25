@@ -22,7 +22,7 @@ export default async function PublicLayout({
             <div className="md:col-span-1">
               <div className="flex items-center gap-2.5 mb-4">
                 {settings.logoUrl ? (
-                  <img src={settings.logoUrl} alt={settings.storeName} className="h-8 max-w-[160px] object-contain" />
+                  <img src={settings.logoUrl} alt={settings.storeName} style={{ height: `${settings.appearance?.logoHeight || 32}px` }} className="max-w-[200px] object-contain" />
                 ) : (
                   <>
                     <div className="p-1.5 rounded-lg bg-indigo-500/20">

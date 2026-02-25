@@ -81,7 +81,9 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState("");
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoHeight, setLogoHeight] = useState(32);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingHeroBg, setUploadingHeroBg] = useState(false);
 
   const [form, setForm] = useState({
     storeName: "TiendaDigital",
@@ -114,6 +116,7 @@ export default function AdminSettingsPage() {
         if (data.logoUrl !== undefined) setLogoUrl(data.logoUrl);
         if (data.appearance) {
           setAppearance((a) => ({ ...a, ...data.appearance }));
+          if (data.appearance.logoHeight) setLogoHeight(data.appearance.logoHeight);
         }
       }
     } catch {
@@ -156,7 +159,7 @@ export default function AdminSettingsPage() {
           privacyEmail: form.privacyEmail,
           heroTitle: form.heroTitle,
           heroDescription: form.heroDescription,
-          appearance,
+          appearance: { ...appearance, logoHeight },
         }),
       });
 
@@ -282,6 +285,26 @@ export default function AdminSettingsPage() {
                   Se muestra en el navbar y footer. Recomendado: fondo transparente, max 200×60px. Si no hay logo, se usa el icono + nombre.
                 </p>
               </div>
+              {logoUrl && (
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Tamaño del logo (altura en px)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="20"
+                      max="80"
+                      value={logoHeight}
+                      onChange={(e) => { setLogoHeight(parseInt(e.target.value)); setSaved(false); }}
+                      className="flex-1"
+                    />
+                    <span className="text-sm font-mono w-12 text-center">{logoHeight}px</span>
+                  </div>
+                  <div className="mt-2 p-3 rounded-lg bg-muted/50 border flex items-center gap-3">
+                    <img src={logoUrl} alt="Preview" style={{ height: `${logoHeight}px` }} className="object-contain" />
+                    <span className="text-xs text-muted-foreground">Vista previa del tamaño</span>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-medium mb-1 block">Eslogan</label>
                 <Input
@@ -462,16 +485,63 @@ export default function AdminSettingsPage() {
 
                   {appearance.heroBgType === "image" && (
                     <div>
-                      <label className="text-sm font-medium mb-1 block">URL de imagen de fondo</label>
-                      <Input
-                        value={appearance.heroBgImage}
-                        onChange={(e) => updateAppearance("heroBgImage", e.target.value)}
-                        placeholder="https://example.com/hero-bg.jpg"
-                        className="font-mono text-xs"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        URL completa de la imagen. Recomendado: 1920x800px minimo.
-                      </p>
+                      <label className="text-sm font-medium mb-1 block">Imagen de fondo del hero</label>
+                      {appearance.heroBgImage ? (
+                        <div className="space-y-2">
+                          <div className="relative rounded-lg overflow-hidden border h-32">
+                            <img src={appearance.heroBgImage} alt="Hero BG" className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-muted-foreground truncate flex-1">{appearance.heroBgImage}</p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive gap-1 h-7 text-xs"
+                              onClick={() => { updateAppearance("heroBgImage", ""); }}
+                            >
+                              <X className="h-3 w-3" /> Quitar
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center w-full h-24 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 bg-muted/30 cursor-pointer transition-colors">
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setUploadingHeroBg(true);
+                              try {
+                                const fd = new FormData();
+                                fd.append("file", file);
+                                const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+                                const data = await res.json();
+                                if (res.ok && data.url) {
+                                  updateAppearance("heroBgImage", data.url);
+                                } else {
+                                  setError(data.error || "Error subiendo imagen");
+                                }
+                              } catch {
+                                setError("Error subiendo imagen");
+                              } finally {
+                                setUploadingHeroBg(false);
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                          {uploadingHeroBg ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          ) : (
+                            <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                              <ImageIcon className="h-5 w-5" />
+                              <span className="text-xs">Subir imagen de fondo (JPG, PNG, WebP — recomendado 1920x800px)</span>
+                            </div>
+                          )}
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>

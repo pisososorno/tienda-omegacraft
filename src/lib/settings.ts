@@ -15,6 +15,7 @@ export interface AppearanceSettings {
   footerBg: string;
   footerText: string;
   catalogBg: string;
+  logoHeight: number;
 }
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
@@ -31,6 +32,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   footerBg: "#0f172a",
   footerText: "#f8fafc",
   catalogBg: "#f8fafc",
+  logoHeight: 32,
 };
 
 export interface SiteSettingsData {

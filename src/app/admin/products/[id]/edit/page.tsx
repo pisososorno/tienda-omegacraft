@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, Upload, X, Star, ImageIcon, Video } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Upload, X, Star, ImageIcon, Video, FileArchive, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,16 @@ interface ProductImage {
   isPrimary: boolean;
 }
 
+interface ProductFile {
+  id: string;
+  filename: string;
+  fileSize: string;
+  mimeType: string;
+  sha256Hash: string;
+  sortOrder: number;
+  isPrimary: boolean;
+}
+
 interface ProductDetail {
   id: string;
   slug: string;
@@ -37,6 +47,7 @@ interface ProductDetail {
   downloadLimit: number;
   downloadExpiresDays: number;
   images: ProductImage[];
+  files?: ProductFile[];
 }
 
 export default function EditProductPage() {
@@ -45,8 +56,10 @@ export default function EditProductPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState("");
   const [images, setImages] = useState<ProductImage[]>([]);
+  const [files, setFiles] = useState<ProductFile[]>([]);
 
   const [form, setForm] = useState({
     name: "",
@@ -84,6 +97,7 @@ export default function EditProductPage() {
           isActive: p.isActive,
         });
         setImages(p.images || []);
+        setFiles(p.files || []);
       })
       .catch(() => setError("Producto no encontrado"))
       .finally(() => setLoading(false));
@@ -130,6 +144,52 @@ export default function EditProductPage() {
       setUploading(false);
       e.target.value = "";
     }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    setUploadingFile(true);
+    setError("");
+    try {
+      for (let i = 0; i < fileList.length; i++) {
+        const formData = new FormData();
+        formData.append("file", fileList[i]);
+
+        const res = await fetch(`/api/admin/products/${params.id}/files`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error al subir archivo");
+      }
+      fetchProduct();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al subir archivo");
+    } finally {
+      setUploadingFile(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleDeleteFile(fileId: string) {
+    if (!confirm("¿Eliminar este archivo?")) return;
+    try {
+      await fetch(`/api/admin/products/${params.id}/files?fileId=${fileId}`, {
+        method: "DELETE",
+      });
+      fetchProduct();
+    } catch {
+      setError("Error al eliminar archivo");
+    }
+  }
+
+  function formatFileSize(bytes: string): string {
+    const b = parseInt(bytes, 10);
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+    return (b / (1024 * 1024)).toFixed(1) + " MB";
   }
 
   async function handleDeleteImage(imageId: string) {
@@ -310,6 +370,72 @@ export default function EditProductPage() {
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Pega un enlace de YouTube para mostrar un video del producto en la página de detalle
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Archivos descargables */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileArchive className="h-4 w-4" />
+                  Archivos descargables
+                </CardTitle>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".zip,.rar,.7z,.tar.gz,.jar,.sk,.yml,.yaml,.json,.schematic,.schem,.nbt,.litematic,.mcworld,.mcpack,.mcaddon,.png,.jpg,.txt,.md,.pdf"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    disabled={uploadingFile}
+                  />
+                  <Button type="button" variant="outline" size="sm" className="gap-2" asChild>
+                    <span>
+                      {uploadingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      Subir archivo
+                    </span>
+                  </Button>
+                </label>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {files.length === 0 ? (
+                <div className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground">
+                  <FileArchive className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-sm font-medium">No hay archivos de descarga</p>
+                  <p className="text-xs mt-1">Sube el archivo ZIP, schematic, JAR o cualquier archivo que el comprador recibirá al pagar.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {files.map((f) => (
+                    <div key={f.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileArchive className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{f.filename}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(f.fileSize)} · {f.mimeType} · SHA256: {f.sha256Hash.slice(0, 12)}…
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteFile(f.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-3">
+                Formatos: ZIP, RAR, JAR, schematic, SCHEM, YML, JSON, etc. Máx 500MB por archivo.
+                Este es el archivo que el comprador descarga después de pagar.
               </p>
             </CardContent>
           </Card>
