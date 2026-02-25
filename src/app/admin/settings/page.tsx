@@ -92,9 +92,15 @@ export default function AdminSettingsPage() {
     privacyEmail: "privacy@tiendadigital.com",
     heroTitle: "Plugins, Maps y Configs de calidad profesional",
     heroDescription: "Descubre nuestra colecci\u00f3n de productos digitales para Minecraft. Spawns, dungeons, plugins y source code \u2014 todo con entrega instant\u00e1nea y soporte incluido.",
-    paypalClientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "",
-    paypalMode: "sandbox",
   });
+
+  const [paypalStatus, setPaypalStatus] = useState<{
+    clientIdConfigured: boolean;
+    clientIdMasked: string;
+    secretConfigured: boolean;
+    webhookIdConfigured: boolean;
+    mode: string;
+  } | null>(null);
 
   const [appearance, setAppearance] = useState<AppearanceForm>(DEFAULT_APPEARANCE);
 
@@ -118,6 +124,7 @@ export default function AdminSettingsPage() {
           setAppearance((a) => ({ ...a, ...data.appearance }));
           if (data.appearance.logoHeight) setLogoHeight(data.appearance.logoHeight);
         }
+        if (data.paypal) setPaypalStatus(data.paypal);
       }
     } catch {
       // Keep defaults
@@ -657,6 +664,63 @@ export default function AdminSettingsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Estado actual desde el servidor */}
+              {paypalStatus ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className={`p-3 rounded-lg border text-center ${paypalStatus.clientIdConfigured ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                      <div className={`text-xs font-medium ${paypalStatus.clientIdConfigured ? "text-emerald-700" : "text-red-700"}`}>
+                        Client ID
+                      </div>
+                      <div className={`text-sm font-bold mt-1 ${paypalStatus.clientIdConfigured ? "text-emerald-800" : "text-red-800"}`}>
+                        {paypalStatus.clientIdConfigured ? "✓ Configurado" : "✗ No configurado"}
+                      </div>
+                      {paypalStatus.clientIdMasked && (
+                        <div className="text-[10px] font-mono text-muted-foreground mt-1">{paypalStatus.clientIdMasked}</div>
+                      )}
+                    </div>
+                    <div className={`p-3 rounded-lg border text-center ${paypalStatus.secretConfigured ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                      <div className={`text-xs font-medium ${paypalStatus.secretConfigured ? "text-emerald-700" : "text-red-700"}`}>
+                        Client Secret
+                      </div>
+                      <div className={`text-sm font-bold mt-1 ${paypalStatus.secretConfigured ? "text-emerald-800" : "text-red-800"}`}>
+                        {paypalStatus.secretConfigured ? "✓ Configurado" : "✗ No configurado"}
+                      </div>
+                    </div>
+                    <div className={`p-3 rounded-lg border text-center ${paypalStatus.webhookIdConfigured ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+                      <div className={`text-xs font-medium ${paypalStatus.webhookIdConfigured ? "text-emerald-700" : "text-amber-700"}`}>
+                        Webhook ID
+                      </div>
+                      <div className={`text-sm font-bold mt-1 ${paypalStatus.webhookIdConfigured ? "text-emerald-800" : "text-amber-800"}`}>
+                        {paypalStatus.webhookIdConfigured ? "✓ Configurado" : "○ Opcional"}
+                      </div>
+                    </div>
+                    <div className={`p-3 rounded-lg border text-center ${paypalStatus.mode === "live" ? "bg-blue-50 border-blue-200" : "bg-amber-50 border-amber-200"}`}>
+                      <div className="text-xs font-medium text-gray-600">Modo</div>
+                      <div className={`text-sm font-bold mt-1 ${paypalStatus.mode === "live" ? "text-blue-800" : "text-amber-800"}`}>
+                        {paypalStatus.mode === "live" ? "🟢 Producción" : "🟡 Sandbox"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!paypalStatus.clientIdConfigured || !paypalStatus.secretConfigured ? (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+                      <p className="font-medium">⚠ PayPal no está completamente configurado</p>
+                      <p className="mt-1 text-red-700">Los pagos no funcionarán hasta que configures las credenciales en <code className="bg-red-100 px-1 rounded">.env.production</code> en el servidor.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
+                      <p className="font-medium">✓ PayPal está configurado y listo para recibir pagos</p>
+                      <p className="mt-1 text-emerald-700">
+                        Cuando un cliente paga, el dinero va <strong>directo a tu cuenta PayPal</strong>.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Cargando estado de PayPal...</div>
+              )}
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm space-y-2">
                 <p className="font-medium text-blue-800">Como configurar PayPal:</p>
                 <ol className="list-decimal ml-4 text-blue-700 space-y-1">
@@ -668,47 +732,18 @@ export default function AdminSettingsPage() {
                   </li>
                   <li>Crear una app en &quot;Apps & Credentials&quot;</li>
                   <li>Copiar el <strong>Client ID</strong> y el <strong>Secret</strong></li>
-                  <li>Pegarlos en el archivo <code className="bg-blue-100 px-1 rounded">.env.local</code></li>
-                  <li>Para produccion: cambiar <code className="bg-blue-100 px-1 rounded">PAYPAL_MODE</code> a <code className="bg-blue-100 px-1 rounded">live</code></li>
+                  <li>Agregar las variables en <code className="bg-blue-100 px-1 rounded">.env.production</code> en el servidor</li>
+                  <li>Reiniciar el contenedor: <code className="bg-blue-100 px-1 rounded">bash scripts/update.sh</code></li>
+                  <li>Para producción: cambiar <code className="bg-blue-100 px-1 rounded">PAYPAL_MODE</code> a <code className="bg-blue-100 px-1 rounded">live</code></li>
                 </ol>
               </div>
 
-              <div>
-                <label className="text-sm font-medium mb-1 block">PayPal Client ID</label>
-                <Input
-                  value={form.paypalClientId}
-                  onChange={(e) => updateField("paypalClientId", e.target.value)}
-                  placeholder="AWxxxxx...tu_client_id_de_paypal"
-                  className="font-mono text-xs"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Se obtiene del dashboard de PayPal Developer</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-1 block">Modo</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={form.paypalMode}
-                  onChange={(e) => updateField("paypalMode", e.target.value)}
-                >
-                  <option value="sandbox">Sandbox (pruebas)</option>
-                  <option value="live">Live (produccion)</option>
-                </select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Usa Sandbox para testear sin dinero real. Cambia a Live cuando estes listo.
-                </p>
-              </div>
-
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
-                <p className="font-medium text-amber-800">Variables de entorno requeridas en <code>.env.local</code>:</p>
+                <p className="font-medium text-amber-800">Variables requeridas en <code>.env.production</code>:</p>
                 <pre className="mt-2 bg-amber-100/50 p-3 rounded text-xs font-mono text-amber-900 overflow-x-auto">{`PAYPAL_CLIENT_ID=tu_client_id_aqui
 PAYPAL_CLIENT_SECRET=tu_secret_aqui
 PAYPAL_WEBHOOK_ID=tu_webhook_id_aqui
 PAYPAL_MODE=sandbox`}</pre>
-                <p className="mt-2 text-amber-700">
-                  Cuando un cliente paga, el dinero va <strong>directo a tu cuenta PayPal</strong>.
-                  PayPal Orders API v2 procesa el cobro y lo deposita en tu cuenta de negocio.
-                </p>
               </div>
             </CardContent>
           </Card>

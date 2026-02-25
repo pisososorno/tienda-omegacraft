@@ -34,6 +34,12 @@ export async function GET(req: NextRequest) {
       ...((row.appearance ?? {}) as Record<string, unknown>),
     };
 
+    // PayPal env status (masked, never expose secrets)
+    const ppClientId = process.env.PAYPAL_CLIENT_ID || "";
+    const ppSecret = process.env.PAYPAL_CLIENT_SECRET || "";
+    const ppMode = process.env.PAYPAL_MODE || "sandbox";
+    const ppWebhookId = process.env.PAYPAL_WEBHOOK_ID || "";
+
     return NextResponse.json({
       storeName: row.storeName,
       logoUrl: row.logoUrl,
@@ -43,6 +49,13 @@ export async function GET(req: NextRequest) {
       heroTitle: row.heroTitle,
       heroDescription: row.heroDescription,
       appearance,
+      paypal: {
+        clientIdConfigured: ppClientId.length > 0,
+        clientIdMasked: ppClientId ? ppClientId.slice(0, 6) + "…" + ppClientId.slice(-4) : "",
+        secretConfigured: ppSecret.length > 0,
+        webhookIdConfigured: ppWebhookId.length > 0,
+        mode: ppMode,
+      },
     });
   } catch (err) {
     console.error("[GET /api/admin/settings]", err);
