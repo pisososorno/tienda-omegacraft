@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { getSettings } from "@/lib/settings";
+import { appendEvent } from "@/lib/forensic";
 
 let _transporter: nodemailer.Transporter | null = null;
 
@@ -27,6 +28,13 @@ function getAppUrl(): string {
   return process.env.APP_URL || "http://localhost:3000";
 }
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const masked = local.length <= 2 ? "*" : local[0] + "***" + local[local.length - 1];
+  return `${masked}@${domain}`;
+}
+
 export interface SendPurchaseEmailInput {
   buyerEmail: string;
   orderNumber: string;
@@ -34,6 +42,7 @@ export interface SendPurchaseEmailInput {
   downloadUrl: string;
   expiresAt: Date;
   downloadLimit: number;
+  orderId: string;
 }
 
 /**
@@ -85,15 +94,49 @@ export async function sendPurchaseEmail(
 
   const { storeName } = await getSettings();
 
-  const result = await transporter.sendMail({
-    from: `"${storeName}" <${getFromEmail()}>`,
-    to: input.buyerEmail,
-    subject: `Your download is ready — Order ${input.orderNumber}`,
-    html,
-    text: `Thank you for your purchase!\n\nOrder: ${input.orderNumber}\nProduct: ${input.productName}\n\nDownload your files: ${input.downloadUrl}\n\nDownload limit: ${input.downloadLimit} downloads\nLink expires: ${input.expiresAt.toISOString()}\n\nYou can also access your downloads at ${getAppUrl()}/my-downloads`,
-  });
+  try {
+    const result = await transporter.sendMail({
+      from: `"${storeName}" <${getFromEmail()}>`,
+      to: input.buyerEmail,
+      subject: `Your download is ready — Order ${input.orderNumber}`,
+      html,
+      text: `Thank you for your purchase!\n\nOrder: ${input.orderNumber}\nProduct: ${input.productName}\n\nDownload your files: ${input.downloadUrl}\n\nDownload limit: ${input.downloadLimit} downloads\nLink expires: ${input.expiresAt.toISOString()}\n\nYou can also access your downloads at ${getAppUrl()}/my-downloads`,
+    });
 
-  return { messageId: result.messageId };
+    // Log success to forensic chain
+    if (input.orderId) {
+      await appendEvent({
+        orderId: input.orderId,
+        eventType: "email.purchase_sent",
+        eventData: {
+          messageId: result.messageId,
+          to: maskEmail(input.buyerEmail),
+          provider: "smtp",
+          smtpHost: process.env.SMTP_HOST || "unknown",
+          status: "sent",
+        },
+      }).catch(() => {});
+    }
+
+    return { messageId: result.messageId };
+  } catch (err) {
+    // Log failure to forensic chain
+    if (input.orderId) {
+      await appendEvent({
+        orderId: input.orderId,
+        eventType: "email.failed",
+        eventData: {
+          emailType: "purchase",
+          to: maskEmail(input.buyerEmail),
+          provider: "smtp",
+          smtpHost: process.env.SMTP_HOST || "unknown",
+          error: err instanceof Error ? err.message : String(err),
+          status: "failed",
+        },
+      }).catch(() => {});
+    }
+    throw err;
+  }
 }
 
 export interface SendStageReleasedEmailInput {

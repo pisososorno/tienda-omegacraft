@@ -48,6 +48,16 @@ export default function CheckoutReturnPage() {
           licenseKey: data.licenseKey,
         });
         setStatus("success");
+        // Track checkout success viewed (fire-and-forget)
+        fetch("/api/track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderId: pending.orderId,
+            email: pending.email,
+            eventType: "checkout.success_viewed",
+          }),
+        }).catch(() => {});
       })
       .catch((err) => {
         setError(err.message);

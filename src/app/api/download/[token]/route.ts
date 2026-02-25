@@ -110,6 +110,8 @@ export async function GET(
   // 9. Determine which file to serve
   let storageKey: string;
   let filename: string;
+  let fileSizeBytes: number | null = null;
+  let fileSha256: string | null = null;
 
   if (downloadToken.stageId) {
     // Staged delivery
@@ -138,14 +140,20 @@ export async function GET(
     }
     storageKey = stage.storageKey;
     filename = stage.filename || "download";
+    fileSizeBytes = stage.fileSize ? Number(stage.fileSize) : null;
+    fileSha256 = stage.sha256Hash;
   } else {
     // Non-staged: serve primary file or delivery package
     if (order.deliveryPackageKey) {
       storageKey = order.deliveryPackageKey;
       filename = `${order.orderNumber}-delivery.zip`;
+      fileSha256 = order.deliveryPackageHash || null;
     } else if (order.product.files.length > 0) {
-      storageKey = order.product.files[0].storageKey;
-      filename = order.product.files[0].filename;
+      const pf = order.product.files[0];
+      storageKey = pf.storageKey;
+      filename = pf.filename;
+      fileSizeBytes = Number(pf.fileSize);
+      fileSha256 = pf.sha256Hash;
     } else {
       return new Response("No files available", { status: 404 });
     }
@@ -190,7 +198,7 @@ export async function GET(
     }
   }
 
-  // 12. Log successful download
+  // 12. Log successful download with full file metadata for evidence
   await appendEvent({
     orderId: order.id,
     eventType: "download.completed",
@@ -199,9 +207,12 @@ export async function GET(
       result: isResumeRequest ? "OK_RANGE" : "OK",
       filename,
       storageKey,
+      fileSizeBytes,
+      fileSha256,
       stageId: downloadToken.stageId || null,
       contentLength: fileData.contentLength,
       rangeRequested: rangeHeader || null,
+      downloadCountAfter: isResumeRequest ? order.downloadCount : order.downloadCount + 1,
     },
     ipAddress: ip,
     userAgent: ua,

@@ -85,6 +85,7 @@ function CheckoutPage() {
           orderId: data.orderId,
           orderNumber: data.orderNumber,
           paypalOrderId: data.paypalOrderId,
+          email,
         })
       );
 

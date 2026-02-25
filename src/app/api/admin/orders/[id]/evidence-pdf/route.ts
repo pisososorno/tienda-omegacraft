@@ -8,7 +8,7 @@ import { getSettings } from "@/lib/settings";
 
 /**
  * Evidence PDF Export — generates a real PDF evidence pack for chargeback defense.
- * Uses @react-pdf/renderer for production-grade PDF generation.
+ * Uses pdf-lib for production-grade PDF generation (pure JS, no React dependency).
  */
 export async function GET(
   req: NextRequest,
@@ -22,7 +22,11 @@ export async function GET(
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
-        product: true,
+        product: {
+          include: {
+            files: { orderBy: { sortOrder: "asc" } },
+          },
+        },
         termsVersion: true,
         events: { orderBy: { sequenceNumber: "asc" } },
         license: true,
@@ -58,7 +62,7 @@ export async function GET(
     console.error("[admin/orders/id/evidence-pdf] FAILED:", err.message);
     console.error("[admin/orders/id/evidence-pdf] Stack:", err.stack);
     if (err.message.includes("Cannot find module")) {
-      console.error("[admin/orders/id/evidence-pdf] Missing dependency — ensure @react-pdf/renderer is installed in Docker image");
+      console.error("[admin/orders/id/evidence-pdf] Missing dependency — ensure pdf-lib is installed");
     }
     return jsonError(`PDF generation failed: ${err.message}`, 500);
   }

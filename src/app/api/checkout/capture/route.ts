@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     const appUrl = process.env.APP_URL || "http://localhost:3000";
     const downloadUrl = `${appUrl}/api/download/${rawToken}`;
 
-    // 10. Send purchase email (non-blocking)
+    // 10. Send purchase email (non-blocking — email events logged internally by mailer)
     sendPurchaseEmail({
       buyerEmail: order.buyerEmail,
       orderNumber: order.orderNumber,
@@ -178,12 +178,7 @@ export async function POST(req: NextRequest) {
       downloadUrl,
       expiresAt,
       downloadLimit: order.downloadLimit,
-    }).then(async (result) => {
-      await appendEvent({
-        orderId: order.id,
-        eventType: "email.purchase_sent",
-        eventData: { messageId: result.messageId, to: order.buyerEmail },
-      });
+      orderId: order.id,
     }).catch((err) => {
       console.error("[capture] Email send failed:", err);
     });

@@ -62,7 +62,20 @@ export default function MyDownloadsPage() {
         setError(data.error || "Search failed");
         setOrders([]);
       } else {
-        setOrders(data.orders || []);
+        const found = data.orders || [];
+        setOrders(found);
+        // Track page viewed for each order (fire-and-forget)
+        for (const o of found) {
+          fetch("/api/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId: o.id,
+              email,
+              eventType: "downloads.page_viewed",
+            }),
+          }).catch(() => {});
+        }
       }
     } catch {
       setError("Network error");
@@ -73,6 +86,19 @@ export default function MyDownloadsPage() {
   }
 
   async function requestNewToken(orderId: string, stageId?: string) {
+    // Track button click (fire-and-forget)
+    if (email) {
+      fetch("/api/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          email,
+          eventType: "download.button_clicked",
+          extra: { stageId: stageId || null },
+        }),
+      }).catch(() => {});
+    }
     try {
       const res = await fetch("/api/my-downloads/new-token", {
         method: "POST",

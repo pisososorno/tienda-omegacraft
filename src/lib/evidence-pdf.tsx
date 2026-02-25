@@ -9,6 +9,7 @@ export interface EvidenceOrderData {
   buyerName: string;
   buyerEmail: string;
   buyerIp: string | null;
+  buyerUserAgent: string | null;
   buyerCountry: string | null;
   buyerCity: string | null;
   amountUsd: unknown; // Decimal
@@ -19,6 +20,7 @@ export interface EvidenceOrderData {
   paypalPayerName: string | null;
   paypalPayerEmail: string | null;
   paypalStatus: string | null;
+  paypalRawCapture: unknown | null;
   paypalWebhookReceivedAt: Date | null;
   downloadCount: number;
   downloadLimit: number;
@@ -30,10 +32,20 @@ export interface EvidenceOrderData {
   termsAcceptedAt: Date;
   termsAcceptedIp: string | null;
   termsAcceptedUa: string | null;
+  productSnapshot: unknown;
   product: {
     name: string;
     slug: string;
     category: string;
+    shortDescription: string | null;
+    metadata: unknown;
+    priceUsd: unknown;
+    files: Array<{
+      filename: string;
+      fileSize: bigint | number;
+      sha256Hash: string;
+      mimeType: string;
+    }>;
   };
   termsVersion: {
     versionLabel: string;
@@ -70,6 +82,7 @@ export interface EvidenceOrderData {
     status: string;
     filename: string | null;
     sha256Hash: string | null;
+    fileSize: bigint | number | null;
     downloadCount: number;
     downloadLimit: number;
     releasedAt: Date | null;
@@ -350,6 +363,20 @@ class PdfWriter {
   }
 }
 
+// ── Helpers for PDF generation ───────────────────────
+function fmtSize(bytes: number | bigint | null | undefined): string {
+  if (bytes === null || bytes === undefined) return "N/A";
+  const n = Number(bytes);
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function safeStr(v: unknown): string {
+  if (v === null || v === undefined) return "N/A";
+  return String(v);
+}
+
 // ── Public API ───────────────────────────────────────
 export async function generateEvidencePdf(
   order: EvidenceOrderData,
@@ -365,6 +392,16 @@ export async function generateEvidencePdf(
   const w = new PdfWriter();
   await w.init();
 
+  // Precompute event categories
+  const dlCompletedEvents = order.events.filter((e) => e.eventType === "download.completed");
+  const tokenEvents = order.events.filter((e) => e.eventType === "download.token_generated");
+  const webActivityEvents = order.events.filter((e) =>
+    ["checkout.success_viewed", "downloads.page_viewed", "download.button_clicked", "download.link_opened", "download.access_page_viewed"].includes(e.eventType)
+  );
+  const emailEvents = order.events.filter((e) => e.eventType.startsWith("email."));
+  const adminEvents = order.events.filter((e) => e.eventType.startsWith("admin."));
+  const paymentCapturedEvent = order.events.find((e) => e.eventType === "payment.captured");
+
   // ── Header ──
   w.header("EVIDENCE PACK - CHARGEBACK DEFENSE", `Document ${documentId} | Generated ${fmtDate(now)} by ${generatedBy}`);
 
@@ -376,14 +413,15 @@ export async function generateEvidencePdf(
     );
   }
 
-  // ── 1. Order Summary ──
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 1: ORDER SUMMARY
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   w.sectionTitle("1. ORDER SUMMARY");
   w.kv("Order Number", order.orderNumber);
   w.kv("Order ID", order.id);
   w.kv("Status", order.status.toUpperCase());
   w.kv("Created", fmtDate(order.createdAt));
   w.kv("Product", order.product.name);
-  w.kv("Product Slug", order.product.slug);
   w.kv("Category", order.product.category);
   w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
   w.kv("Buyer Name", order.buyerName || "N/A");
@@ -392,8 +430,34 @@ export async function generateEvidencePdf(
   w.kv("Buyer Country", order.buyerCountry || "N/A");
   w.kv("Buyer City", order.buyerCity || "N/A");
 
-  // ── 2. Identity Verification ──
-  w.sectionTitle("2. IDENTITY VERIFICATION");
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION A: DIGITAL DELIVERY DETAILS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("2. DIGITAL DELIVERY DETAILS");
+  w.kv("Product Type", "Digital download (intangible)");
+  w.kv("Delivery Method", "Instant download via secure token + license key");
+  const deliveryCompleted = dlCompletedEvents.length > 0;
+  w.kv("Delivery Completed", deliveryCompleted ? "YES" : "NO");
+  if (deliveryCompleted) {
+    w.kv("First Download At", fmtDate(dlCompletedEvents[0].createdAt));
+  }
+  if (tokenEvents.length > 0) {
+    w.kv("Delivery Token Created", fmtDate(tokenEvents[0].createdAt));
+  }
+  w.kv("Delivery Revocable", "YES");
+  w.kv("Downloads Revoked", order.downloadsRevoked ? "YES" : "NO");
+  if (order.license) {
+    w.kv("License Status", order.license.status.toUpperCase());
+  }
+  w.note(
+    "This is a digital product delivered instantly after payment via secure download token. The buyer was granted time-limited, count-limited download access.",
+    C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+  );
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 2: IDENTITY VERIFICATION
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("3. IDENTITY VERIFICATION");
   w.kv("Name at Checkout", order.buyerName || "N/A");
   w.kv("PayPal Payer Name", order.paypalPayerName || "N/A");
   w.kv("Email at Checkout", order.buyerEmail);
@@ -409,20 +473,90 @@ export async function generateEvidencePdf(
     C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
   );
 
-  // ── 3. Payment Proof ──
-  w.sectionTitle("3. PAYMENT PROOF (PayPal)");
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION D: SESSION CORRELATION (PURCHASE vs DOWNLOAD)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("4. SESSION CORRELATION (Purchase vs Download)");
+  const checkoutIp = order.buyerIp || "";
+  const checkoutUa = order.buyerUserAgent || "";
+  const checkoutCountry = order.buyerCountry || "";
+  const checkoutCity = order.buyerCity || "";
+
+  if (dlCompletedEvents.length > 0) {
+    const firstDl = dlCompletedEvents[0];
+    const dlIp = firstDl.ipAddress || "";
+    const dlUa = firstDl.userAgent || "";
+
+    const ipMatch = checkoutIp && dlIp ? (checkoutIp === dlIp ? "MATCH" : "DIFFERENT") : "UNKNOWN";
+    const uaMatch = checkoutUa && dlUa ? (checkoutUa === dlUa ? "MATCH" : "DIFFERENT") : "UNKNOWN";
+
+    w.kv("Checkout IP", checkoutIp || "N/A");
+    w.kv("Download IP", dlIp || "N/A");
+    w.badge(`IP CORRELATION: ${ipMatch}`, ipMatch === "MATCH");
+
+    w.kv("Checkout UA", truncate(checkoutUa || "N/A", 80));
+    w.kv("Download UA", truncate(dlUa || "N/A", 80));
+    w.badge(`USER-AGENT CORRELATION: ${uaMatch}`, uaMatch === "MATCH");
+
+    if (checkoutCountry) {
+      w.kv("Checkout Location", `${checkoutCountry}${checkoutCity ? `, ${checkoutCity}` : ""}`);
+    }
+
+    // Time delta
+    if (paymentCapturedEvent) {
+      const captureTime = new Date(paymentCapturedEvent.createdAt).getTime();
+      const dlTime = new Date(firstDl.createdAt).getTime();
+      const deltaMin = Math.round((dlTime - captureTime) / 60000);
+      w.kv("Time to First Download", `${deltaMin} minutes after payment`);
+    }
+  } else {
+    w.text("No completed downloads yet - correlation not available.", 0, 8, { color: C.textMut });
+    w.y -= 12;
+    if (checkoutIp) w.kv("Checkout IP", checkoutIp);
+    if (checkoutCountry) w.kv("Checkout Location", `${checkoutCountry}${checkoutCity ? `, ${checkoutCity}` : ""}`);
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION F: PAYPAL PAYMENT DETAILS (Human Readable Extract)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("5. PAYPAL PAYMENT DETAILS (Extract)");
   w.kv("PayPal Order ID", order.paypalOrderId || "N/A");
   w.kv("PayPal Capture ID", order.paypalCaptureId || "N/A");
-  w.kv("PayPal Payer ID", order.paypalPayerId || "N/A");
-  w.kv("PayPal Payer Name", order.paypalPayerName || "N/A");
-  w.kv("PayPal Payer Email", order.paypalPayerEmail || "N/A");
   w.kv("PayPal Status", order.paypalStatus || "N/A");
-  w.kv("Webhook Received", fmtDate(order.paypalWebhookReceivedAt));
+  w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
+  w.kv("Payer ID", order.paypalPayerId || "N/A");
+  w.kv("Payer Email", order.paypalPayerEmail || "N/A");
+  w.kv("Payer Name", order.paypalPayerName || "N/A");
 
-  // ── 4. Terms Acceptance ──
-  w.sectionTitle("4. TERMS OF SERVICE ACCEPTANCE");
+  // Extract additional fields from rawCapture if available
+  const raw = order.paypalRawCapture as Record<string, unknown> | null;
+  if (raw) {
+    w.kv("PayPal Create Time", safeStr(raw.create_time));
+    w.kv("PayPal Update Time", safeStr(raw.update_time));
+    // Try to find merchant info
+    const pu = raw.purchase_units as Array<Record<string, unknown>> | undefined;
+    if (pu && pu[0]) {
+      const payee = pu[0].payee as Record<string, unknown> | undefined;
+      if (payee) {
+        w.kv("Merchant Email", safeStr(payee.email_address));
+        w.kv("Merchant ID", safeStr(payee.merchant_id));
+      }
+    }
+  }
+
+  // Webhook vs API verification
+  if (order.paypalWebhookReceivedAt) {
+    w.kv("Verification", `Webhook received at ${fmtDate(order.paypalWebhookReceivedAt)}`);
+  } else {
+    w.kv("Verification", "Capture verified via PayPal Orders API (no webhook)");
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 4: TERMS OF SERVICE ACCEPTANCE
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("6. TERMS OF SERVICE ACCEPTANCE");
   w.kv("Terms Version", order.termsVersion.versionLabel);
-  w.kv("Content Hash", order.termsVersion.contentHash);
+  w.kv("Content Hash (SHA256)", order.termsVersion.contentHash);
   w.kv("Accepted At", fmtDate(order.termsAcceptedAt));
   w.kv("Accepted IP", order.termsAcceptedIp || "N/A");
   w.kv("Accepted UA", truncate(order.termsAcceptedUa || "N/A", 100));
@@ -431,75 +565,198 @@ export async function generateEvidencePdf(
     C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
   );
 
-  // ── 5. License ──
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION H: REFUND POLICY & DIGITAL ACKNOWLEDGEMENT
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("7. REFUND POLICY & DIGITAL ACKNOWLEDGEMENT");
+  w.note(
+    "Digital goods delivered instantly. No refunds after delivery/download except as required by applicable local law. The buyer explicitly acknowledged this policy before completing the purchase.",
+    C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+  );
+  w.kv("ToS Version", order.termsVersion.versionLabel);
+  w.kv("ToS Hash", order.termsVersion.contentHash);
+  w.kv("Accepted At", fmtDate(order.termsAcceptedAt));
+  w.kv("Accepted IP", order.termsAcceptedIp || "N/A");
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 5: LICENSE INFORMATION
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (order.license) {
-    w.sectionTitle("5. LICENSE INFORMATION");
+    w.sectionTitle("8. LICENSE INFORMATION");
     w.kv("License Key", order.license.licenseKey);
     w.kv("Fingerprint", order.license.fingerprint);
     w.kv("Status", order.license.status);
     w.kv("Created", fmtDate(order.license.createdAt));
   }
 
-  // ── 6. Download History ──
-  w.sectionTitle("6. DOWNLOAD HISTORY");
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION G: PRODUCT SNAPSHOT (Human Readable)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("9. PRODUCT SNAPSHOT (Human Readable)");
+  w.kv("Product Name", order.product.name);
+  w.kv("Category", order.product.category);
+  w.kv("Slug", order.product.slug);
+  if (order.product.shortDescription) {
+    w.kv("Description", truncate(order.product.shortDescription, 120));
+  }
+  const meta = order.product.metadata as Record<string, unknown> | null;
+  if (meta) {
+    if (meta.version) w.kv("Version", safeStr(meta.version));
+    if (meta.mc_versions) w.kv("MC Versions", safeStr(meta.mc_versions));
+    if (meta.platforms) w.kv("Platforms", safeStr(meta.platforms));
+  }
+  w.kv("Price (locked)", `$${String(order.amountUsd)} ${order.currency}`);
+
+  // Product files list
+  if (order.product.files && order.product.files.length > 0) {
+    w.ensureSpace(14);
+    w.text("Included Files:", 0, 8, { font: w.fontBold, color: C.textSec });
+    w.y -= 12;
+    for (const f of order.product.files) {
+      w.ensureSpace(20);
+      w.text(`${f.filename} (${fmtSize(f.fileSize)}) [${f.mimeType}]`, 6, 7, { color: C.textSec });
+      w.y -= 9;
+      w.text(`SHA256: ${f.sha256Hash}`, 6, 6, { font: w.fontMono, color: C.textMut });
+      w.y -= 10;
+    }
+  }
+
+  // JSON snapshot reference
+  if (order.snapshots.length > 0) {
+    w.ensureSpace(14);
+    w.text("Full JSON snapshot stored separately (see Forensic Snapshots section).", 0, 7, { color: C.textMut });
+    w.y -= 12;
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION B: DOWNLOAD HISTORY (Strong Proof)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("10. DOWNLOAD HISTORY (Detailed)");
   w.kv("Total Downloads", `${order.downloadCount} / ${order.downloadLimit}`);
   w.kv("Downloads Expire", fmtDate(order.downloadsExpireAt));
   w.kv("Downloads Revoked", order.downloadsRevoked ? "YES" : "NO");
-  const dlEvents = order.events.filter((e) => e.eventType.startsWith("download."));
-  for (const ev of dlEvents) {
-    const data = ev.eventData as Record<string, unknown>;
-    w.ensureSpace(14);
-    w.text(`${fmtDate(ev.createdAt)}  ${ev.eventType}  IP: ${ev.ipAddress || "N/A"}  ${String(data.result || data.filename || "-")}`, 0, 7, { color: C.textSec });
-    w.y -= 10;
+
+  if (dlCompletedEvents.length > 0) {
+    // Table header
+    w.ensureSpace(20);
+    w.y -= 4;
+    w.text("Timestamp", 0, 7, { font: w.fontBold, color: C.textSec });
+    w.text("File", 120, 7, { font: w.fontBold, color: C.textSec });
+    w.text("Size", 250, 7, { font: w.fontBold, color: C.textSec });
+    w.text("SHA256", 300, 7, { font: w.fontBold, color: C.textSec });
+    w.text("IP", 370, 7, { font: w.fontBold, color: C.textSec });
+    w.text("Result", 440, 7, { font: w.fontBold, color: C.textSec });
+    w.y -= 3;
+    w.line(0, w.contentW, C.border);
+    w.y -= 8;
+
+    for (const ev of dlCompletedEvents) {
+      const d = ev.eventData as Record<string, unknown>;
+      w.ensureSpace(22);
+      w.text(fmtDate(ev.createdAt).substring(0, 19), 0, 6, { font: w.fontMono, color: C.textSec });
+      w.text(truncate(safeStr(d.filename), 18), 120, 6, { color: C.textSec });
+      w.text(fmtSize(d.fileSizeBytes as number | null), 250, 6, { color: C.textSec });
+      w.text(truncate(safeStr(d.fileSha256), 10), 300, 6, { font: w.fontMono, color: C.textMut });
+      w.text(ev.ipAddress || "N/A", 370, 6, { color: C.textSec });
+      w.text(safeStr(d.result), 440, 6, { color: safeStr(d.result).startsWith("OK") ? C.success : C.danger });
+      w.y -= 9;
+      // UA on second line
+      if (ev.userAgent) {
+        w.text(`UA: ${truncate(ev.userAgent, 90)}`, 6, 5, { color: C.textMut });
+        w.y -= 8;
+      }
+    }
   }
 
-  // ── 7. Delivery Stages ──
+  // Also show denied downloads
+  const dlDenied = order.events.filter((e) => e.eventType === "download.denied" || e.eventType === "download.denied_frozen");
+  if (dlDenied.length > 0) {
+    w.ensureSpace(16);
+    w.text("Denied Download Attempts:", 0, 7, { font: w.fontBold, color: C.danger });
+    w.y -= 10;
+    for (const ev of dlDenied) {
+      const d = ev.eventData as Record<string, unknown>;
+      w.ensureSpace(12);
+      w.text(`${fmtDate(ev.createdAt)}  ${safeStr(d.result)}  IP: ${ev.ipAddress || "N/A"}`, 6, 6, { color: C.danger });
+      w.y -= 9;
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 7: DELIVERY STAGES
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (order.deliveryStages.length > 0) {
-    w.sectionTitle("7. DELIVERY STAGES");
+    w.sectionTitle("11. DELIVERY STAGES");
     for (const stage of order.deliveryStages) {
-      w.ensureSpace(24);
-      w.text(`Stage ${stage.stageOrder} (${stage.stageType}) - ${stage.status}`, 0, 8, { font: w.fontBold });
+      w.ensureSpace(30);
+      w.text(`Stage ${stage.stageOrder} (${stage.stageType}) - ${stage.status.toUpperCase()}`, 0, 8, { font: w.fontBold });
       w.y -= 10;
-      w.text(`File: ${stage.filename || "N/A"} | SHA256: ${truncate(stage.sha256Hash || "N/A", 20)} | Downloads: ${stage.downloadCount}/${stage.downloadLimit} | Released: ${fmtDate(stage.releasedAt)}`, 0, 7, { color: C.textSec });
+      w.text(`File: ${stage.filename || "N/A"} | Size: ${fmtSize(stage.fileSize)}`, 6, 7, { color: C.textSec });
+      w.y -= 9;
+      w.text(`SHA256: ${stage.sha256Hash || "N/A"}`, 6, 6, { font: w.fontMono, color: C.textMut });
+      w.y -= 9;
+      w.text(`Downloads: ${stage.downloadCount}/${stage.downloadLimit} | Released: ${fmtDate(stage.releasedAt)}`, 6, 7, { color: C.textSec });
       w.y -= 12;
     }
   }
 
-  // ── 8. Proof of Access ──
-  w.sectionTitle("8. PROOF OF ACCESS (My Downloads)");
-  const accessEvents = order.events.filter((e) => e.eventType === "download.access_page_viewed");
-  if (accessEvents.length > 0) {
-    for (const ev of accessEvents) {
-      w.kv(fmtDate(ev.createdAt), `Viewed "My Downloads" - IP: ${ev.ipAddress || "N/A"}`);
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION C: PROOF OF ACCESS (Web Activity)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("12. PROOF OF ACCESS (Web Activity)");
+  if (webActivityEvents.length > 0) {
+    for (const ev of webActivityEvents) {
+      w.ensureSpace(18);
+      w.text(`[${fmtDate(ev.createdAt)}] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: C.accent });
+      w.y -= 9;
+      w.text(`IP: ${ev.ipAddress || "N/A"} | UA: ${truncate(ev.userAgent || "N/A", 70)}`, 6, 6, { color: C.textSec });
+      w.y -= 10;
     }
   } else {
-    w.text("No access page views recorded.", 0, 8, { color: C.textMut });
+    w.text("No web activity events recorded yet.", 0, 8, { color: C.textMut });
     w.y -= 12;
   }
 
-  // ── 9. Email Delivery Log ──
-  w.sectionTitle("9. EMAIL DELIVERY LOG");
-  const emailEvents = order.events.filter((e) => e.eventType.startsWith("email."));
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION E: EMAIL DELIVERY LOG
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("13. EMAIL DELIVERY LOG");
   if (emailEvents.length > 0) {
     for (const ev of emailEvents) {
-      const data = ev.eventData as Record<string, unknown>;
-      w.kv(fmtDate(ev.createdAt), `${ev.eventType} -> ${String(data.to || "N/A")} (${String(data.messageId || "N/A")})`);
+      const d = ev.eventData as Record<string, unknown>;
+      w.ensureSpace(22);
+      const statusIcon = ev.eventType === "email.failed" ? "FAILED" : "SENT";
+      const statusColor = ev.eventType === "email.failed" ? C.danger : C.success;
+      w.text(`[${statusIcon}] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: statusColor });
+      w.y -= 9;
+      w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
+      w.y -= 9;
+      if (d.messageId) {
+        w.text(`Message-ID: ${safeStr(d.messageId)}`, 6, 6, { font: w.fontMono, color: C.textMut });
+        w.y -= 9;
+      }
+      if (d.error) {
+        w.text(`Error: ${truncate(safeStr(d.error), 80)}`, 6, 6, { color: C.danger });
+        w.y -= 9;
+      }
+      w.y -= 3;
     }
   } else {
     w.text("No email events recorded.", 0, 8, { color: C.textMut });
     w.y -= 12;
   }
 
-  // ── 10. Admin Actions ──
-  w.sectionTitle("10. ADMIN ACTIONS LOG");
-  const adminEvents = order.events.filter((e) => e.eventType.startsWith("admin."));
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 10: ADMIN ACTIONS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("14. ADMIN ACTIONS LOG");
   if (adminEvents.length > 0) {
     for (const ev of adminEvents) {
-      const data = ev.eventData as Record<string, unknown>;
+      const d = ev.eventData as Record<string, unknown>;
       w.ensureSpace(20);
       w.text(`[${fmtDate(ev.createdAt)}] ${ev.eventType}`, 0, 8, { font: w.fontBold, color: C.accent });
       w.y -= 10;
-      for (const [k, v] of Object.entries(data)) {
+      for (const [k, v] of Object.entries(d)) {
         w.text(`${k}: ${String(v)}`, 6, 7, { color: C.textSec });
         w.y -= 9;
       }
@@ -510,8 +767,10 @@ export async function generateEvidencePdf(
     w.y -= 12;
   }
 
-  // ── 11. Forensic Snapshots ──
-  w.sectionTitle("11. FORENSIC PRODUCT SNAPSHOTS");
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 11: FORENSIC SNAPSHOTS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("15. FORENSIC PRODUCT SNAPSHOTS");
   if (order.snapshots.length > 0) {
     for (const snap of order.snapshots) {
       w.kv(
@@ -524,8 +783,10 @@ export async function generateEvidencePdf(
     w.y -= 12;
   }
 
-  // ── 12. Chain Integrity ──
-  w.sectionTitle("12. TAMPER-EVIDENT EVENT CHAIN");
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 12: CHAIN INTEGRITY + COMPLETE EVENT CHAIN
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  w.sectionTitle("16. TAMPER-EVIDENT EVENT CHAIN");
   w.badge(chain.valid ? "CHAIN VALID" : "CHAIN BROKEN", chain.valid);
   w.kv("Total Events", String(chain.totalEvents));
   w.kv("First Event", fmtDate(chain.firstEventAt));
@@ -534,7 +795,6 @@ export async function generateEvidencePdf(
     w.kv("Broken at Seq", `#${chain.brokenAtSequence}`);
   }
 
-  // Complete event chain
   w.sectionTitle("COMPLETE EVENT CHAIN");
   for (const ev of order.events) {
     w.chainEvent(
@@ -548,9 +808,11 @@ export async function generateEvidencePdf(
     );
   }
 
-  // ── 13. Dispute Mode ──
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 13: DISPUTE MODE
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (order.evidenceFrozenAt) {
-    w.sectionTitle("13. DISPUTE MODE STATUS");
+    w.sectionTitle("17. DISPUTE MODE STATUS");
     w.note("EVIDENCE FROZEN", C.dangerBg, C.danger, C.danger);
     w.kv("Frozen At", fmtDate(order.evidenceFrozenAt));
     w.kv("Frozen By", order.evidenceFrozenByAdmin || "N/A");
