@@ -19,7 +19,7 @@ RUN npx prisma generate
 FROM deps AS externals
 RUN node -e "\
 const fs = require('fs'), path = require('path');\
-const seeds = ['@react-pdf/renderer', 'archiver'];\
+const seeds = ['archiver'];\
 const collected = new Set();\
 function collect(name) {\
   if (collected.has(name)) return;\
@@ -76,9 +76,8 @@ COPY --from=builder /app/prisma ./prisma
 # Copy bcryptjs for entrypoint seed logic
 COPY --from=deps /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
-# Copy serverExternalPackages (@react-pdf/renderer, archiver) + all transitive deps.
+# Copy serverExternalPackages (archiver) + all transitive deps.
 # These packages are NOT bundled by Next.js standalone, so they must be in node_modules at runtime.
-# We use the externals stage (below) which collects them automatically.
 COPY --from=externals /externals/ ./node_modules/
 
 # Copy entrypoint

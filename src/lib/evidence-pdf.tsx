@@ -1,12 +1,4 @@
-import React from "react";
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  renderToBuffer,
-} from "@react-pdf/renderer";
+import { PDFDocument, StandardFonts, rgb, PDFPage, PDFFont } from "pdf-lib";
 
 // ── Types ────────────────────────────────────────────
 export interface EvidenceOrderData {
@@ -92,193 +84,6 @@ export interface ChainResult {
   brokenAtSequence: number | null;
 }
 
-// ── Styles ───────────────────────────────────────────
-const colors = {
-  primary: "#1e293b",
-  secondary: "#334155",
-  accent: "#2563eb",
-  success: "#059669",
-  danger: "#dc2626",
-  warning: "#d97706",
-  bg: "#ffffff",
-  bgAlt: "#f8fafc",
-  border: "#e2e8f0",
-  textPrimary: "#1e293b",
-  textSecondary: "#64748b",
-  textMuted: "#94a3b8",
-};
-
-const styles = StyleSheet.create({
-  page: {
-    padding: 40,
-    fontSize: 9,
-    fontFamily: "Helvetica",
-    color: colors.textPrimary,
-    backgroundColor: colors.bg,
-  },
-  // Header
-  header: {
-    backgroundColor: colors.primary,
-    padding: 20,
-    marginBottom: 20,
-    borderRadius: 4,
-  },
-  headerTitle: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontFamily: "Helvetica-Bold",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    color: "#cbd5e1",
-    fontSize: 9,
-    textAlign: "center",
-  },
-  // Sections
-  section: {
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontFamily: "Helvetica-Bold",
-    color: colors.primary,
-    borderBottomWidth: 2,
-    borderBottomColor: colors.accent,
-    paddingBottom: 4,
-    marginBottom: 8,
-  },
-  // Key-value rows
-  row: {
-    flexDirection: "row",
-    paddingVertical: 2,
-  },
-  label: {
-    width: 140,
-    fontFamily: "Helvetica-Bold",
-    fontSize: 8,
-    color: colors.textSecondary,
-  },
-  value: {
-    flex: 1,
-    fontSize: 8,
-  },
-  // Tables
-  tableHeader: {
-    flexDirection: "row",
-    backgroundColor: colors.primary,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 2,
-  },
-  tableHeaderCell: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 7,
-    color: "#ffffff",
-  },
-  tableRow: {
-    flexDirection: "row",
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
-  tableRowAlt: {
-    flexDirection: "row",
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.bgAlt,
-  },
-  tableCell: {
-    fontSize: 7,
-  },
-  // Status badges
-  badgeValid: {
-    backgroundColor: "#dcfce7",
-    color: colors.success,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    fontSize: 8,
-    fontFamily: "Helvetica-Bold",
-  },
-  badgeBroken: {
-    backgroundColor: "#fef2f2",
-    color: colors.danger,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    fontSize: 8,
-    fontFamily: "Helvetica-Bold",
-  },
-  // Footer
-  footer: {
-    position: "absolute",
-    bottom: 20,
-    left: 40,
-    right: 40,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  footerText: {
-    fontSize: 7,
-    color: colors.textMuted,
-  },
-  // Chain event block
-  chainBlock: {
-    marginBottom: 4,
-    paddingLeft: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.accent,
-  },
-  chainSeq: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 8,
-    color: colors.accent,
-  },
-  chainDetail: {
-    fontSize: 7,
-    color: colors.textSecondary,
-  },
-  chainHash: {
-    fontSize: 6,
-    color: colors.textMuted,
-    fontFamily: "Courier",
-  },
-  // Warning box
-  warningBox: {
-    backgroundColor: "#fef3c7",
-    borderLeftWidth: 3,
-    borderLeftColor: colors.warning,
-    padding: 8,
-    marginBottom: 10,
-    borderRadius: 2,
-  },
-  warningText: {
-    fontSize: 8,
-    color: "#92400e",
-  },
-  // Dispute freeze box
-  frozenBox: {
-    backgroundColor: "#fef2f2",
-    borderLeftWidth: 3,
-    borderLeftColor: colors.danger,
-    padding: 8,
-    marginBottom: 10,
-    borderRadius: 2,
-  },
-  frozenText: {
-    fontSize: 8,
-    color: colors.danger,
-    fontFamily: "Helvetica-Bold",
-  },
-});
-
 // ── Helpers ──────────────────────────────────────────
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "N/A";
@@ -289,543 +94,260 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.substring(0, max) + "..." : s;
 }
 
-// ── Row Component ────────────────────────────────────
-function KV({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
-    </View>
-  );
-}
+// ── Colors (as RGB 0-1) ─────────────────────────────
+const C = {
+  primary: rgb(0.118, 0.161, 0.231),
+  accent: rgb(0.145, 0.388, 0.922),
+  success: rgb(0.02, 0.588, 0.412),
+  danger: rgb(0.863, 0.149, 0.149),
+  warning: rgb(0.851, 0.467, 0.024),
+  white: rgb(1, 1, 1),
+  textSec: rgb(0.392, 0.455, 0.545),
+  textMut: rgb(0.58, 0.639, 0.722),
+  border: rgb(0.886, 0.91, 0.941),
+  bgAlt: rgb(0.973, 0.98, 0.988),
+  warningBg: rgb(0.996, 0.953, 0.78),
+  dangerBg: rgb(0.996, 0.949, 0.949),
+  successBg: rgb(0.863, 0.988, 0.906),
+};
 
-// ── Document Component ───────────────────────────────
-function EvidenceDocument({
-  order,
-  chain,
-  generatedBy,
-  generatedAt,
-  documentId,
-  storeName,
-}: {
-  order: EvidenceOrderData;
-  chain: ChainResult;
-  generatedBy: string;
-  generatedAt: Date;
-  documentId: string;
-  storeName: string;
-}) {
-  const downloadEvents = order.events.filter((e) =>
-    e.eventType.startsWith("download.")
-  );
-  const emailEvents = order.events.filter((e) =>
-    e.eventType.startsWith("email.")
-  );
-  const adminEvents = order.events.filter((e) =>
-    e.eventType.startsWith("admin.")
-  );
-  const accessEvents = order.events.filter(
-    (e) => e.eventType === "download.access_page_viewed"
-  );
+// ── PDF Writer class ─────────────────────────────────
+class PdfWriter {
+  doc!: PDFDocument;
+  page!: PDFPage;
+  font!: PDFFont;
+  fontBold!: PDFFont;
+  fontMono!: PDFFont;
+  y = 0;
+  pageNum = 0;
+  totalPages = 0;
+  readonly margin = 40;
+  readonly pageW = 595.28; // A4
+  readonly pageH = 841.89;
+  readonly contentW: number;
+  readonly footerY = 30;
 
-  return (
-    <Document
-      title={`Evidence Pack — ${order.orderNumber}`}
-      author={`${storeName} Forensic Engine`}
-      subject="Chargeback Defense Evidence"
-    >
-      {/* ── PAGE 1: Order Summary + Payment + Terms ── */}
-      <Page size="A4" style={styles.page}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>
-            EVIDENCE PACK — CHARGEBACK DEFENSE
-          </Text>
-          <Text style={styles.headerSubtitle}>
-            Document {documentId} | Generated {fmtDate(generatedAt)} by{" "}
-            {generatedBy}
-          </Text>
-        </View>
+  constructor() {
+    this.contentW = this.pageW - this.margin * 2;
+  }
 
-        {order.evidenceFrozenAt && (
-          <View style={styles.frozenBox}>
-            <Text style={styles.frozenText}>
-              DISPUTE MODE ACTIVE — Evidence frozen at{" "}
-              {fmtDate(order.evidenceFrozenAt)} by{" "}
-              {order.evidenceFrozenByAdmin || "N/A"}
-            </Text>
-          </View>
-        )}
+  async init() {
+    this.doc = await PDFDocument.create();
+    this.font = await this.doc.embedFont(StandardFonts.Helvetica);
+    this.fontBold = await this.doc.embedFont(StandardFonts.HelveticaBold);
+    this.fontMono = await this.doc.embedFont(StandardFonts.Courier);
+    this.newPage();
+  }
 
-        {/* Section 1: Order Summary */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>1. ORDER SUMMARY</Text>
-          <KV label="Order Number" value={order.orderNumber} />
-          <KV label="Order ID" value={order.id} />
-          <KV label="Status" value={order.status.toUpperCase()} />
-          <KV label="Created" value={fmtDate(order.createdAt)} />
-          <KV label="Product" value={order.product.name} />
-          <KV label="Product Slug" value={order.product.slug} />
-          <KV label="Category" value={order.product.category} />
-          <KV
-            label="Amount"
-            value={`$${String(order.amountUsd)} ${order.currency}`}
-          />
-          <KV label="Buyer Name" value={order.buyerName || "N/A"} />
-          <KV label="Buyer Email" value={order.buyerEmail} />
-          <KV label="Buyer IP (masked)" value={order.buyerIp || "N/A"} />
-          <KV label="Buyer Country" value={order.buyerCountry || "N/A"} />
-          <KV label="Buyer City" value={order.buyerCity || "N/A"} />
-        </View>
+  newPage() {
+    this.page = this.doc.addPage([this.pageW, this.pageH]);
+    this.y = this.pageH - this.margin;
+    this.pageNum++;
+  }
 
-        {/* Section 2: Identity Verification */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>2. IDENTITY VERIFICATION</Text>
-          <KV label="Name at Checkout" value={order.buyerName || "N/A"} />
-          <KV label="PayPal Payer Name" value={order.paypalPayerName || "N/A"} />
-          <KV label="Email at Checkout" value={order.buyerEmail} />
-          <KV label="PayPal Payer Email" value={order.paypalPayerEmail || "N/A"} />
-          {(() => {
-            const checkoutName = (order.buyerName || "").trim().toLowerCase();
-            const paypalName = (order.paypalPayerName || "").trim().toLowerCase();
-            const nameMatch = checkoutName && paypalName
-              ? checkoutName === paypalName
-                ? "EXACT MATCH"
-                : paypalName.includes(checkoutName) || checkoutName.includes(paypalName)
-                  ? "PARTIAL MATCH"
-                  : "MISMATCH"
-              : "PENDING";
-            return (
-              <View style={{ flexDirection: "row", marginTop: 4 }}>
-                <Text style={nameMatch === "EXACT MATCH" ? styles.badgeValid : nameMatch === "PARTIAL MATCH" ? styles.badgeValid : nameMatch === "MISMATCH" ? styles.badgeBroken : { fontSize: 8, color: colors.textMuted }}>
-                  NAME MATCH: {nameMatch}
-                </Text>
-              </View>
-            );
-          })()}
-          <View style={styles.warningBox}>
-            <Text style={styles.warningText}>
-              The buyer entered their full name at checkout before payment. This name can be compared against the PayPal account holder name to verify the transaction was authorized by the account owner.
-            </Text>
-          </View>
-        </View>
+  ensureSpace(needed: number) {
+    if (this.y - needed < this.footerY + 20) {
+      this.drawFooter();
+      this.newPage();
+    }
+  }
 
-        {/* Section 3: Payment Proof */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>3. PAYMENT PROOF (PayPal)</Text>
-          <KV
-            label="PayPal Order ID"
-            value={order.paypalOrderId || "N/A"}
-          />
-          <KV
-            label="PayPal Capture ID"
-            value={order.paypalCaptureId || "N/A"}
-          />
-          <KV
-            label="PayPal Payer ID"
-            value={order.paypalPayerId || "N/A"}
-          />
-          <KV
-            label="PayPal Payer Name"
-            value={order.paypalPayerName || "N/A"}
-          />
-          <KV
-            label="PayPal Payer Email"
-            value={order.paypalPayerEmail || "N/A"}
-          />
-          <KV
-            label="PayPal Status"
-            value={order.paypalStatus || "N/A"}
-          />
-          <KV
-            label="Webhook Received"
-            value={fmtDate(order.paypalWebhookReceivedAt)}
-          />
-        </View>
+  // ── Drawing primitives ──
+  text(
+    str: string,
+    x: number,
+    size: number,
+    options?: { font?: PDFFont; color?: ReturnType<typeof rgb>; maxWidth?: number }
+  ) {
+    const f = options?.font || this.font;
+    const c = options?.color || C.primary;
+    const maxW = options?.maxWidth || this.contentW;
+    // Truncate if too wide
+    let s = str;
+    while (s.length > 1 && f.widthOfTextAtSize(s, size) > maxW) {
+      s = s.substring(0, s.length - 2) + "…";
+    }
+    // Sanitize: replace characters outside WinAnsi with '?'
+    s = s.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+    this.page.drawText(s, { x: this.margin + x, y: this.y, size, font: f, color: c });
+  }
 
-        {/* Section 4: Terms Acceptance */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            4. TERMS OF SERVICE ACCEPTANCE
-          </Text>
-          <KV
-            label="Terms Version"
-            value={order.termsVersion.versionLabel}
-          />
-          <KV
-            label="Content Hash"
-            value={order.termsVersion.contentHash}
-          />
-          <KV label="Accepted At" value={fmtDate(order.termsAcceptedAt)} />
-          <KV
-            label="Accepted IP"
-            value={order.termsAcceptedIp || "N/A"}
-          />
-          <KV
-            label="Accepted UA"
-            value={truncate(order.termsAcceptedUa || "N/A", 100)}
-          />
-          <View style={styles.warningBox}>
-            <Text style={styles.warningText}>
-              Terms content (first 400 chars):{"\n"}
-              {truncate(order.termsVersion.content, 400)}
-            </Text>
-          </View>
-        </View>
+  rect(x: number, w: number, h: number, color: ReturnType<typeof rgb>) {
+    this.page.drawRectangle({
+      x: this.margin + x,
+      y: this.y - h + 12,
+      width: w,
+      height: h,
+      color,
+    });
+  }
 
-        {/* Section 5: License */}
-        {order.license && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>5. LICENSE INFORMATION</Text>
-            <KV label="License Key" value={order.license.licenseKey} />
-            <KV label="Fingerprint" value={order.license.fingerprint} />
-            <KV label="Status" value={order.license.status} />
-            <KV label="Created" value={fmtDate(order.license.createdAt)} />
-          </View>
-        )}
+  line(x1: number, x2: number, color: ReturnType<typeof rgb> = C.border) {
+    this.page.drawLine({
+      start: { x: this.margin + x1, y: this.y },
+      end: { x: this.margin + x2, y: this.y },
+      thickness: 1,
+      color,
+    });
+  }
 
-        {/* Footer */}
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>
-            {storeName} Forensic Engine — {documentId}
-          </Text>
-          <Text
-            style={styles.footerText}
-            render={({ pageNumber, totalPages }) =>
-              `Page ${pageNumber} / ${totalPages}`
-            }
-          />
-        </View>
-      </Page>
+  // ── Compound elements ──
+  header(title: string, subtitle: string) {
+    const h = 50;
+    this.rect(0, this.contentW, h, C.primary);
+    this.y -= 8;
+    const tw = this.fontBold.widthOfTextAtSize(title, 14);
+    this.page.drawText(title, {
+      x: this.margin + (this.contentW - tw) / 2,
+      y: this.y,
+      size: 14,
+      font: this.fontBold,
+      color: C.white,
+    });
+    this.y -= 14;
+    const sw = this.font.widthOfTextAtSize(subtitle, 8);
+    this.page.drawText(subtitle.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"), {
+      x: this.margin + (this.contentW - sw) / 2,
+      y: this.y,
+      size: 8,
+      font: this.font,
+      color: rgb(0.796, 0.835, 0.882),
+    });
+    this.y -= h - 16;
+  }
 
-      {/* ── PAGE 2: Downloads + Delivery + Emails ── */}
-      <Page size="A4" style={styles.page}>
-        {/* Section 6: Download History */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>6. DOWNLOAD HISTORY</Text>
-          <KV
-            label="Total Downloads"
-            value={`${order.downloadCount} / ${order.downloadLimit}`}
-          />
-          <KV
-            label="Downloads Expire"
-            value={fmtDate(order.downloadsExpireAt)}
-          />
-          <KV
-            label="Downloads Revoked"
-            value={order.downloadsRevoked ? "YES" : "NO"}
-          />
+  sectionTitle(title: string) {
+    this.ensureSpace(24);
+    this.y -= 6;
+    this.text(title, 0, 10, { font: this.fontBold });
+    this.y -= 4;
+    this.line(0, this.contentW, C.accent);
+    this.y -= 10;
+  }
 
-          {downloadEvents.length > 0 && (
-            <View style={{ marginTop: 6 }}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.tableHeaderCell, { width: 130 }]}>
-                  Timestamp
-                </Text>
-                <Text style={[styles.tableHeaderCell, { width: 140 }]}>
-                  Event
-                </Text>
-                <Text style={[styles.tableHeaderCell, { width: 80 }]}>
-                  IP
-                </Text>
-                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>
-                  Result
-                </Text>
-              </View>
-              {downloadEvents.map((ev, i) => {
-                const data = ev.eventData as Record<string, unknown>;
-                return (
-                  <View
-                    key={i}
-                    style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-                  >
-                    <Text style={[styles.tableCell, { width: 130 }]}>
-                      {fmtDate(ev.createdAt)}
-                    </Text>
-                    <Text style={[styles.tableCell, { width: 140 }]}>
-                      {ev.eventType}
-                    </Text>
-                    <Text style={[styles.tableCell, { width: 80 }]}>
-                      {ev.ipAddress || "N/A"}
-                    </Text>
-                    <Text style={[styles.tableCell, { flex: 1 }]}>
-                      {String(data.result || data.filename || "—")}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
+  kv(label: string, value: string) {
+    this.ensureSpace(14);
+    this.text(label, 0, 8, { font: this.fontBold, color: C.textSec, maxWidth: 130 });
+    this.text(value, 140, 8, { maxWidth: this.contentW - 140 });
+    this.y -= 12;
+  }
 
-        {/* Section 7: Delivery Stages */}
-        {order.deliveryStages.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>7. DELIVERY STAGES</Text>
-            {order.deliveryStages.map((stage, i) => (
-              <View
-                key={i}
-                style={{
-                  marginBottom: 4,
-                  paddingLeft: 8,
-                  borderLeftWidth: 2,
-                  borderLeftColor:
-                    stage.status === "delivered"
-                      ? colors.success
-                      : stage.status === "revoked"
-                        ? colors.danger
-                        : colors.accent,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: "Helvetica-Bold",
-                    fontSize: 8,
-                  }}
-                >
-                  Stage {stage.stageOrder} ({stage.stageType}) — {stage.status}
-                </Text>
-                <Text style={{ fontSize: 7, color: colors.textSecondary }}>
-                  File: {stage.filename || "N/A"} | SHA256:{" "}
-                  {truncate(stage.sha256Hash || "N/A", 20)} | Downloads:{" "}
-                  {stage.downloadCount}/{stage.downloadLimit} | Released:{" "}
-                  {fmtDate(stage.releasedAt)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
+  note(txt: string, bgColor: ReturnType<typeof rgb>, textColor: ReturnType<typeof rgb>, borderColor: ReturnType<typeof rgb>) {
+    const lines = this.wrapText(txt, 7, this.contentW - 20);
+    const h = lines.length * 10 + 10;
+    this.ensureSpace(h + 4);
+    this.rect(0, this.contentW, h, bgColor);
+    // left border
+    this.page.drawRectangle({
+      x: this.margin,
+      y: this.y - h + 12,
+      width: 3,
+      height: h,
+      color: borderColor,
+    });
+    this.y -= 4;
+    for (const l of lines) {
+      this.text(l, 8, 7, { color: textColor });
+      this.y -= 10;
+    }
+    this.y -= 6;
+  }
 
-        {/* Section 8: Proof of Access */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            8. PROOF OF ACCESS (My Downloads)
-          </Text>
-          {accessEvents.length > 0 ? (
-            accessEvents.map((ev, i) => (
-              <View key={i} style={styles.row}>
-                <Text style={styles.label}>{fmtDate(ev.createdAt)}</Text>
-                <Text style={styles.value}>
-                  Viewed "My Downloads" — IP: {ev.ipAddress || "N/A"}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text style={{ fontSize: 8, color: colors.textMuted }}>
-              No access page views recorded.
-            </Text>
-          )}
-        </View>
+  badge(label: string, valid: boolean) {
+    const bgC = valid ? C.successBg : C.dangerBg;
+    const fgC = valid ? C.success : C.danger;
+    const w = this.fontBold.widthOfTextAtSize(label, 8) + 12;
+    this.ensureSpace(16);
+    this.rect(0, w, 14, bgC);
+    this.text(label, 4, 8, { font: this.fontBold, color: fgC });
+    this.y -= 18;
+  }
 
-        {/* Section 9: Email Delivery Log */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>9. EMAIL DELIVERY LOG</Text>
-          {emailEvents.length > 0 ? (
-            emailEvents.map((ev, i) => {
-              const data = ev.eventData as Record<string, unknown>;
-              return (
-                <View key={i} style={styles.row}>
-                  <Text style={styles.label}>{fmtDate(ev.createdAt)}</Text>
-                  <Text style={styles.value}>
-                    {ev.eventType} → {String(data.to || "N/A")} (
-                    {String(data.messageId || "N/A")})
-                  </Text>
-                </View>
-              );
-            })
-          ) : (
-            <Text style={{ fontSize: 8, color: colors.textMuted }}>
-              No email events recorded.
-            </Text>
-          )}
-        </View>
+  chainEvent(seq: number, type: string, time: string, ip: string, ref: string, hash: string, prev: string) {
+    const needed = 46;
+    this.ensureSpace(needed);
+    // left accent bar
+    this.page.drawRectangle({
+      x: this.margin,
+      y: this.y - needed + 12,
+      width: 2,
+      height: needed,
+      color: C.accent,
+    });
+    this.text(`#${seq} ${type}`, 6, 8, { font: this.fontBold, color: C.accent });
+    this.y -= 10;
+    this.text(`Time: ${time}${ip ? ` | IP: ${ip}` : ""}${ref ? ` | Ref: ${ref}` : ""}`, 6, 7, { color: C.textSec });
+    this.y -= 9;
+    this.text(`Hash: ${hash}`, 6, 6, { font: this.fontMono, color: C.textMut });
+    this.y -= 8;
+    this.text(`Prev: ${prev}`, 6, 6, { font: this.fontMono, color: C.textMut });
+    this.y -= 12;
+  }
 
-        {/* Section 10: Admin Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>10. ADMIN ACTIONS LOG</Text>
-          {adminEvents.length > 0 ? (
-            adminEvents.map((ev, i) => {
-              const data = ev.eventData as Record<string, unknown>;
-              return (
-                <View key={i} style={styles.chainBlock}>
-                  <Text style={styles.chainSeq}>
-                    [{fmtDate(ev.createdAt)}] {ev.eventType}
-                  </Text>
-                  {Object.entries(data).map(([k, v]) => (
-                    <Text key={k} style={styles.chainDetail}>
-                      {k}: {String(v)}
-                    </Text>
-                  ))}
-                </View>
-              );
-            })
-          ) : (
-            <Text style={{ fontSize: 8, color: colors.textMuted }}>
-              No admin actions recorded.
-            </Text>
-          )}
-        </View>
+  drawFooter(footerLeft?: string) {
+    const txt = footerLeft || "";
+    if (txt) {
+      this.page.drawText(txt.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"), {
+        x: this.margin,
+        y: this.footerY,
+        size: 7,
+        font: this.font,
+        color: C.textMut,
+      });
+    }
+  }
 
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>
-            {storeName} Forensic Engine — {documentId}
-          </Text>
-          <Text
-            style={styles.footerText}
-            render={({ pageNumber, totalPages }) =>
-              `Page ${pageNumber} / ${totalPages}`
-            }
-          />
-        </View>
-      </Page>
+  addFooters(footerLeft: string) {
+    const pages = this.doc.getPages();
+    this.totalPages = pages.length;
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
+      // separator line
+      p.drawLine({
+        start: { x: this.margin, y: this.footerY + 10 },
+        end: { x: this.pageW - this.margin, y: this.footerY + 10 },
+        thickness: 0.5,
+        color: C.border,
+      });
+      p.drawText(footerLeft.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?"), {
+        x: this.margin,
+        y: this.footerY,
+        size: 7,
+        font: this.font,
+        color: C.textMut,
+      });
+      const pageLabel = `Page ${i + 1} / ${pages.length}`;
+      const pw = this.font.widthOfTextAtSize(pageLabel, 7);
+      p.drawText(pageLabel, {
+        x: this.pageW - this.margin - pw,
+        y: this.footerY,
+        size: 7,
+        font: this.font,
+        color: C.textMut,
+      });
+    }
+  }
 
-      {/* ── PAGE 3: Snapshots + Chain ── */}
-      <Page size="A4" style={styles.page}>
-        {/* Section 11: Forensic Snapshots */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            11. FORENSIC PRODUCT SNAPSHOTS
-          </Text>
-          {order.snapshots.length > 0 ? (
-            order.snapshots.map((snap, i) => (
-              <View key={i} style={styles.row}>
-                <Text style={styles.label}>
-                  {snap.snapshotType.toUpperCase()} —{" "}
-                  {fmtDate(snap.createdAt)}
-                </Text>
-                <Text style={styles.value}>
-                  Hash: {snap.snapshotHash}
-                  {snap.snapshotHtmlKey
-                    ? ` | HTML: ${snap.snapshotHtmlKey}`
-                    : ""}
-                  {snap.snapshotPdfKey
-                    ? ` | PDF: ${snap.snapshotPdfKey}`
-                    : ""}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text style={{ fontSize: 8, color: colors.textMuted }}>
-              No snapshots recorded.
-            </Text>
-          )}
-        </View>
+  wrapText(txt: string, size: number, maxW: number): string[] {
+    const words = txt.split(/\s+/);
+    const lines: string[] = [];
+    let current = "";
+    for (const w of words) {
+      const test = current ? current + " " + w : w;
+      if (this.font.widthOfTextAtSize(test, size) > maxW && current) {
+        lines.push(current);
+        current = w;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    return lines.length ? lines : [""];
+  }
 
-        {/* Section 12: Chain Integrity */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            12. TAMPER-EVIDENT EVENT CHAIN
-          </Text>
-          <View style={{ flexDirection: "row", marginBottom: 8 }}>
-            <Text
-              style={chain.valid ? styles.badgeValid : styles.badgeBroken}
-            >
-              {chain.valid ? "CHAIN VALID" : "CHAIN BROKEN"}
-            </Text>
-          </View>
-          <KV label="Total Events" value={String(chain.totalEvents)} />
-          <KV label="First Event" value={fmtDate(chain.firstEventAt)} />
-          <KV label="Last Event" value={fmtDate(chain.lastEventAt)} />
-          {!chain.valid && chain.brokenAtSequence && (
-            <KV
-              label="Broken at Seq"
-              value={`#${chain.brokenAtSequence}`}
-            />
-          )}
-        </View>
-
-        {/* Full chain listing */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>COMPLETE EVENT CHAIN</Text>
-          {order.events.map((ev, i) => (
-            <View key={i} style={styles.chainBlock}>
-              <Text style={styles.chainSeq}>
-                #{ev.sequenceNumber} {ev.eventType}
-              </Text>
-              <Text style={styles.chainDetail}>
-                Time: {fmtDate(ev.createdAt)}
-                {ev.ipAddress ? ` | IP: ${ev.ipAddress}` : ""}
-                {ev.externalRef ? ` | Ref: ${ev.externalRef}` : ""}
-              </Text>
-              <Text style={styles.chainHash}>
-                Hash: {ev.eventHash}
-              </Text>
-              <Text style={styles.chainHash}>
-                Prev: {ev.prevHash || "GENESIS"}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Dispute Mode Status */}
-        {order.evidenceFrozenAt && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>13. DISPUTE MODE STATUS</Text>
-            <View style={styles.frozenBox}>
-              <Text style={styles.frozenText}>EVIDENCE FROZEN</Text>
-            </View>
-            <KV
-              label="Frozen At"
-              value={fmtDate(order.evidenceFrozenAt)}
-            />
-            <KV
-              label="Frozen By"
-              value={order.evidenceFrozenByAdmin || "N/A"}
-            />
-            <KV
-              label="Retention Until"
-              value={fmtDate(order.retentionExpiresAt)}
-            />
-          </View>
-        )}
-
-        {/* End */}
-        <View
-          style={{
-            marginTop: 12,
-            backgroundColor: colors.primary,
-            padding: 12,
-            borderRadius: 4,
-          }}
-        >
-          <Text
-            style={{
-              color: "#ffffff",
-              fontSize: 8,
-              textAlign: "center",
-              fontFamily: "Helvetica-Bold",
-            }}
-          >
-            END OF EVIDENCE PACK
-          </Text>
-          <Text
-            style={{
-              color: "#cbd5e1",
-              fontSize: 7,
-              textAlign: "center",
-              marginTop: 2,
-            }}
-          >
-            Auto-generated by {storeName} Forensic Engine. All events are
-            cryptographically chained (SHA-256) and tamper-evident. Chain
-            integrity:{" "}
-            {chain.valid ? "VERIFIED" : "COMPROMISED"}
-          </Text>
-        </View>
-
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>
-            {storeName} Forensic Engine — {documentId}
-          </Text>
-          <Text
-            style={styles.footerText}
-            render={({ pageNumber, totalPages }) =>
-              `Page ${pageNumber} / ${totalPages}`
-            }
-          />
-        </View>
-      </Page>
-    </Document>
-  );
+  async save(): Promise<Uint8Array> {
+    return this.doc.save();
+  }
 }
 
 // ── Public API ───────────────────────────────────────
@@ -838,20 +360,224 @@ export async function generateEvidencePdf(
   const now = new Date();
   const documentId = `EVD-${order.orderNumber}-${Date.now()}`;
   const filename = `evidence-${order.orderNumber}-${now.toISOString().split("T")[0]}.pdf`;
+  const store = storeName || "TiendaDigital";
 
-  const buffer = await renderToBuffer(
-    <EvidenceDocument
-      order={order}
-      chain={chain}
-      generatedBy={generatedBy}
-      generatedAt={now}
-      documentId={documentId}
-      storeName={storeName || "TiendaDigital"}
-    />
+  const w = new PdfWriter();
+  await w.init();
+
+  // ── Header ──
+  w.header("EVIDENCE PACK - CHARGEBACK DEFENSE", `Document ${documentId} | Generated ${fmtDate(now)} by ${generatedBy}`);
+
+  // Dispute freeze banner
+  if (order.evidenceFrozenAt) {
+    w.note(
+      `DISPUTE MODE ACTIVE - Evidence frozen at ${fmtDate(order.evidenceFrozenAt)} by ${order.evidenceFrozenByAdmin || "N/A"}`,
+      C.dangerBg, C.danger, C.danger
+    );
+  }
+
+  // ── 1. Order Summary ──
+  w.sectionTitle("1. ORDER SUMMARY");
+  w.kv("Order Number", order.orderNumber);
+  w.kv("Order ID", order.id);
+  w.kv("Status", order.status.toUpperCase());
+  w.kv("Created", fmtDate(order.createdAt));
+  w.kv("Product", order.product.name);
+  w.kv("Product Slug", order.product.slug);
+  w.kv("Category", order.product.category);
+  w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
+  w.kv("Buyer Name", order.buyerName || "N/A");
+  w.kv("Buyer Email", order.buyerEmail);
+  w.kv("Buyer IP (masked)", order.buyerIp || "N/A");
+  w.kv("Buyer Country", order.buyerCountry || "N/A");
+  w.kv("Buyer City", order.buyerCity || "N/A");
+
+  // ── 2. Identity Verification ──
+  w.sectionTitle("2. IDENTITY VERIFICATION");
+  w.kv("Name at Checkout", order.buyerName || "N/A");
+  w.kv("PayPal Payer Name", order.paypalPayerName || "N/A");
+  w.kv("Email at Checkout", order.buyerEmail);
+  w.kv("PayPal Payer Email", order.paypalPayerEmail || "N/A");
+  const cName = (order.buyerName || "").trim().toLowerCase();
+  const pName = (order.paypalPayerName || "").trim().toLowerCase();
+  const nameMatch = cName && pName
+    ? cName === pName ? "EXACT MATCH" : (pName.includes(cName) || cName.includes(pName)) ? "PARTIAL MATCH" : "MISMATCH"
+    : "PENDING";
+  w.badge(`NAME MATCH: ${nameMatch}`, nameMatch !== "MISMATCH");
+  w.note(
+    "The buyer entered their full name at checkout before payment. This name can be compared against the PayPal account holder name to verify the transaction was authorized by the account owner.",
+    C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
   );
 
+  // ── 3. Payment Proof ──
+  w.sectionTitle("3. PAYMENT PROOF (PayPal)");
+  w.kv("PayPal Order ID", order.paypalOrderId || "N/A");
+  w.kv("PayPal Capture ID", order.paypalCaptureId || "N/A");
+  w.kv("PayPal Payer ID", order.paypalPayerId || "N/A");
+  w.kv("PayPal Payer Name", order.paypalPayerName || "N/A");
+  w.kv("PayPal Payer Email", order.paypalPayerEmail || "N/A");
+  w.kv("PayPal Status", order.paypalStatus || "N/A");
+  w.kv("Webhook Received", fmtDate(order.paypalWebhookReceivedAt));
+
+  // ── 4. Terms Acceptance ──
+  w.sectionTitle("4. TERMS OF SERVICE ACCEPTANCE");
+  w.kv("Terms Version", order.termsVersion.versionLabel);
+  w.kv("Content Hash", order.termsVersion.contentHash);
+  w.kv("Accepted At", fmtDate(order.termsAcceptedAt));
+  w.kv("Accepted IP", order.termsAcceptedIp || "N/A");
+  w.kv("Accepted UA", truncate(order.termsAcceptedUa || "N/A", 100));
+  w.note(
+    `Terms content (first 400 chars): ${truncate(order.termsVersion.content, 400)}`,
+    C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+  );
+
+  // ── 5. License ──
+  if (order.license) {
+    w.sectionTitle("5. LICENSE INFORMATION");
+    w.kv("License Key", order.license.licenseKey);
+    w.kv("Fingerprint", order.license.fingerprint);
+    w.kv("Status", order.license.status);
+    w.kv("Created", fmtDate(order.license.createdAt));
+  }
+
+  // ── 6. Download History ──
+  w.sectionTitle("6. DOWNLOAD HISTORY");
+  w.kv("Total Downloads", `${order.downloadCount} / ${order.downloadLimit}`);
+  w.kv("Downloads Expire", fmtDate(order.downloadsExpireAt));
+  w.kv("Downloads Revoked", order.downloadsRevoked ? "YES" : "NO");
+  const dlEvents = order.events.filter((e) => e.eventType.startsWith("download."));
+  for (const ev of dlEvents) {
+    const data = ev.eventData as Record<string, unknown>;
+    w.ensureSpace(14);
+    w.text(`${fmtDate(ev.createdAt)}  ${ev.eventType}  IP: ${ev.ipAddress || "N/A"}  ${String(data.result || data.filename || "-")}`, 0, 7, { color: C.textSec });
+    w.y -= 10;
+  }
+
+  // ── 7. Delivery Stages ──
+  if (order.deliveryStages.length > 0) {
+    w.sectionTitle("7. DELIVERY STAGES");
+    for (const stage of order.deliveryStages) {
+      w.ensureSpace(24);
+      w.text(`Stage ${stage.stageOrder} (${stage.stageType}) - ${stage.status}`, 0, 8, { font: w.fontBold });
+      w.y -= 10;
+      w.text(`File: ${stage.filename || "N/A"} | SHA256: ${truncate(stage.sha256Hash || "N/A", 20)} | Downloads: ${stage.downloadCount}/${stage.downloadLimit} | Released: ${fmtDate(stage.releasedAt)}`, 0, 7, { color: C.textSec });
+      w.y -= 12;
+    }
+  }
+
+  // ── 8. Proof of Access ──
+  w.sectionTitle("8. PROOF OF ACCESS (My Downloads)");
+  const accessEvents = order.events.filter((e) => e.eventType === "download.access_page_viewed");
+  if (accessEvents.length > 0) {
+    for (const ev of accessEvents) {
+      w.kv(fmtDate(ev.createdAt), `Viewed "My Downloads" - IP: ${ev.ipAddress || "N/A"}`);
+    }
+  } else {
+    w.text("No access page views recorded.", 0, 8, { color: C.textMut });
+    w.y -= 12;
+  }
+
+  // ── 9. Email Delivery Log ──
+  w.sectionTitle("9. EMAIL DELIVERY LOG");
+  const emailEvents = order.events.filter((e) => e.eventType.startsWith("email."));
+  if (emailEvents.length > 0) {
+    for (const ev of emailEvents) {
+      const data = ev.eventData as Record<string, unknown>;
+      w.kv(fmtDate(ev.createdAt), `${ev.eventType} -> ${String(data.to || "N/A")} (${String(data.messageId || "N/A")})`);
+    }
+  } else {
+    w.text("No email events recorded.", 0, 8, { color: C.textMut });
+    w.y -= 12;
+  }
+
+  // ── 10. Admin Actions ──
+  w.sectionTitle("10. ADMIN ACTIONS LOG");
+  const adminEvents = order.events.filter((e) => e.eventType.startsWith("admin."));
+  if (adminEvents.length > 0) {
+    for (const ev of adminEvents) {
+      const data = ev.eventData as Record<string, unknown>;
+      w.ensureSpace(20);
+      w.text(`[${fmtDate(ev.createdAt)}] ${ev.eventType}`, 0, 8, { font: w.fontBold, color: C.accent });
+      w.y -= 10;
+      for (const [k, v] of Object.entries(data)) {
+        w.text(`${k}: ${String(v)}`, 6, 7, { color: C.textSec });
+        w.y -= 9;
+      }
+      w.y -= 4;
+    }
+  } else {
+    w.text("No admin actions recorded.", 0, 8, { color: C.textMut });
+    w.y -= 12;
+  }
+
+  // ── 11. Forensic Snapshots ──
+  w.sectionTitle("11. FORENSIC PRODUCT SNAPSHOTS");
+  if (order.snapshots.length > 0) {
+    for (const snap of order.snapshots) {
+      w.kv(
+        `${snap.snapshotType.toUpperCase()} - ${fmtDate(snap.createdAt)}`,
+        `Hash: ${snap.snapshotHash}${snap.snapshotHtmlKey ? ` | HTML: ${snap.snapshotHtmlKey}` : ""}${snap.snapshotPdfKey ? ` | PDF: ${snap.snapshotPdfKey}` : ""}`
+      );
+    }
+  } else {
+    w.text("No snapshots recorded.", 0, 8, { color: C.textMut });
+    w.y -= 12;
+  }
+
+  // ── 12. Chain Integrity ──
+  w.sectionTitle("12. TAMPER-EVIDENT EVENT CHAIN");
+  w.badge(chain.valid ? "CHAIN VALID" : "CHAIN BROKEN", chain.valid);
+  w.kv("Total Events", String(chain.totalEvents));
+  w.kv("First Event", fmtDate(chain.firstEventAt));
+  w.kv("Last Event", fmtDate(chain.lastEventAt));
+  if (!chain.valid && chain.brokenAtSequence) {
+    w.kv("Broken at Seq", `#${chain.brokenAtSequence}`);
+  }
+
+  // Complete event chain
+  w.sectionTitle("COMPLETE EVENT CHAIN");
+  for (const ev of order.events) {
+    w.chainEvent(
+      ev.sequenceNumber,
+      ev.eventType,
+      fmtDate(ev.createdAt),
+      ev.ipAddress || "",
+      ev.externalRef || "",
+      ev.eventHash,
+      ev.prevHash || "GENESIS"
+    );
+  }
+
+  // ── 13. Dispute Mode ──
+  if (order.evidenceFrozenAt) {
+    w.sectionTitle("13. DISPUTE MODE STATUS");
+    w.note("EVIDENCE FROZEN", C.dangerBg, C.danger, C.danger);
+    w.kv("Frozen At", fmtDate(order.evidenceFrozenAt));
+    w.kv("Frozen By", order.evidenceFrozenByAdmin || "N/A");
+    w.kv("Retention Until", fmtDate(order.retentionExpiresAt));
+  }
+
+  // ── End banner ──
+  w.ensureSpace(40);
+  w.rect(0, w.contentW, 36, C.primary);
+  w.y -= 6;
+  const endTitle = "END OF EVIDENCE PACK";
+  const etw = w.fontBold.widthOfTextAtSize(endTitle, 8);
+  w.page.drawText(endTitle, { x: w.margin + (w.contentW - etw) / 2, y: w.y, size: 8, font: w.fontBold, color: C.white });
+  w.y -= 12;
+  const endSub = `Auto-generated by ${store} Forensic Engine. Chain integrity: ${chain.valid ? "VERIFIED" : "COMPROMISED"}`;
+  const endSubSafe = endSub.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
+  const esw = w.font.widthOfTextAtSize(endSubSafe, 7);
+  w.page.drawText(endSubSafe, { x: w.margin + (w.contentW - esw) / 2, y: w.y, size: 7, font: w.font, color: rgb(0.796, 0.835, 0.882) });
+  w.y -= 20;
+
+  // ── Footers on all pages ──
+  w.addFooters(`${store} Forensic Engine - ${documentId}`);
+
+  const pdfBytes = await w.save();
+
   return {
-    buffer: Buffer.from(buffer),
+    buffer: Buffer.from(pdfBytes),
     filename,
     documentId,
   };
