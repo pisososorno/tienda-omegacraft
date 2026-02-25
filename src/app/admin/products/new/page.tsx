@@ -105,12 +105,12 @@ export default function NewProductPage() {
 
       <form onSubmit={handleSubmit}>
         <div className="space-y-6">
-          {/* Aviso de imágenes */}
+          {/* Aviso de imágenes y archivos */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
             <ImageIcon className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-blue-800">
-              <p className="font-medium">Las imágenes se suben después de crear el producto</p>
-              <p className="text-blue-600 mt-0.5">Completa la info básica primero. Al guardar, se abrirá la página de edición donde podrás subir fotos, screenshots y videos.</p>
+              <p className="font-medium">Las imágenes y archivos descargables se suben después de crear el producto</p>
+              <p className="text-blue-600 mt-0.5">Completa la info básica primero. Al guardar, se abrirá la página de edición donde podrás subir fotos, videos y los <strong>archivos de descarga</strong> (ZIP, schematic, config, JAR, etc.) que el comprador recibirá al pagar.</p>
             </div>
           </div>
 

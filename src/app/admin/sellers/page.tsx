@@ -87,6 +87,44 @@ export default function SellersPage() {
   // Edit status
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  async function handleFinancialUpdate(sellerId: string, field: string, value: string) {
+    setUpdatingId(sellerId);
+    setError("");
+
+    let payload: Record<string, number> = {};
+    if (field === "commissionRate") {
+      const pct = parseFloat(value);
+      if (isNaN(pct) || pct < 0 || pct > 100) { setUpdatingId(null); return; }
+      payload = { commissionRate: pct / 100 };
+    } else if (field === "holdDays") {
+      const days = parseInt(value);
+      if (isNaN(days) || days < 0) { setUpdatingId(null); return; }
+      payload = { holdDays: days };
+    } else if (field === "reserveRate") {
+      const pct = parseFloat(value);
+      if (isNaN(pct) || pct < 0 || pct > 100) { setUpdatingId(null); return; }
+      payload = { reserveRate: pct / 100 };
+    }
+
+    try {
+      const res = await fetch(`/api/admin/sellers/${sellerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Error");
+      }
+      setSuccess("Configuración financiera actualizada");
+      fetchSellers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
   async function fetchSellers() {
     try {
       const res = await fetch("/api/admin/sellers");
@@ -439,8 +477,67 @@ export default function SellersPage() {
                     </div>
                   </div>
 
+                  {/* Configuración financiera editable */}
+                  <div>
+                    <div className="text-sm font-medium mb-2">Configuración financiera</div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Comisión (%)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            defaultValue={(parseFloat(seller.commissionRate) * 100).toFixed(0)}
+                            className="w-20 rounded-md border px-2 py-1 text-sm"
+                            onBlur={(e) => handleFinancialUpdate(seller.id, "commissionRate", e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            disabled={updatingId === seller.id}
+                          />
+                          <span className="text-xs text-muted-foreground">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Hold Days</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="365"
+                            step="1"
+                            defaultValue={seller.holdDays}
+                            className="w-20 rounded-md border px-2 py-1 text-sm"
+                            onBlur={(e) => handleFinancialUpdate(seller.id, "holdDays", e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            disabled={updatingId === seller.id}
+                          />
+                          <span className="text-xs text-muted-foreground">días</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground block mb-1">Reserve Rate (%)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            defaultValue={(parseFloat(seller.reserveRate) * 100).toFixed(0)}
+                            className="w-20 rounded-md border px-2 py-1 text-sm"
+                            onBlur={(e) => handleFinancialUpdate(seller.id, "reserveRate", e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                            disabled={updatingId === seller.id}
+                          />
+                          <span className="text-xs text-muted-foreground">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">Edita y presiona Enter o haz click fuera para guardar.</p>
+                  </div>
+
                   {/* Info extra */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground">Payout email:</span>
                       <div className="font-medium">{seller.payoutEmail || "—"}</div>
@@ -448,14 +545,6 @@ export default function SellersPage() {
                     <div>
                       <span className="text-muted-foreground">Método pago:</span>
                       <div className="font-medium">{seller.payoutMethod || "—"}</div>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Hold days:</span>
-                      <div className="font-medium">{seller.holdDays} días</div>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Reserve rate:</span>
-                      <div className="font-medium">{(parseFloat(seller.reserveRate) * 100).toFixed(0)}%</div>
                     </div>
                   </div>
 
