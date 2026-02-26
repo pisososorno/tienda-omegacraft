@@ -2,6 +2,28 @@ import nodemailer from "nodemailer";
 import { getSettings } from "@/lib/settings";
 import { appendEvent } from "@/lib/forensic";
 
+// ── Email Mode Detection ─────────────────────────────
+type EmailMode = "disabled" | "smtp";
+
+function getEmailMode(): EmailMode {
+  const explicit = (process.env.EMAIL_MODE || "").toLowerCase().trim();
+  if (explicit === "disabled") return "disabled";
+  if (explicit === "smtp") return "smtp";
+  // Auto-detect: if SMTP_HOST is set and looks real, use smtp
+  if (isSmtpConfigured()) return "smtp";
+  return "disabled";
+}
+
+function isSmtpConfigured(): boolean {
+  const host = (process.env.SMTP_HOST || "").trim();
+  if (!host) return false;
+  // Reject obvious placeholders
+  if (host === "smtp.example.com" || host === "localhost" || host === "mailhog") return false;
+  const user = (process.env.SMTP_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || "").trim();
+  return !!(user && pass);
+}
+
 let _transporter: nodemailer.Transporter | null = null;
 
 function getTransporter(): nodemailer.Transporter {
@@ -51,6 +73,26 @@ export interface SendPurchaseEmailInput {
 export async function sendPurchaseEmail(
   input: SendPurchaseEmailInput
 ): Promise<{ messageId: string }> {
+  // Check if email is configured
+  const mode = getEmailMode();
+  if (mode === "disabled") {
+    const reason = isSmtpConfigured() ? "disabled" : "not_configured";
+    console.log(`[mailer] Email skipped (${reason}) for order ${input.orderNumber}`);
+    if (input.orderId) {
+      await appendEvent({
+        orderId: input.orderId,
+        eventType: "email.skipped",
+        eventData: {
+          emailType: "purchase",
+          to: maskEmail(input.buyerEmail),
+          reason,
+          smtpHost: process.env.SMTP_HOST || "none",
+        },
+      }).catch(() => {});
+    }
+    return { messageId: `skipped-${reason}-${Date.now()}` };
+  }
+
   const transporter = getTransporter();
 
   const html = `
@@ -153,6 +195,12 @@ export interface SendStageReleasedEmailInput {
 export async function sendStageReleasedEmail(
   input: SendStageReleasedEmailInput
 ): Promise<{ messageId: string }> {
+  const mode = getEmailMode();
+  if (mode === "disabled") {
+    console.log(`[mailer] Stage email skipped (not configured) for order ${input.orderNumber}`);
+    return { messageId: `skipped-not_configured-${Date.now()}` };
+  }
+
   const transporter = getTransporter();
 
   const html = `

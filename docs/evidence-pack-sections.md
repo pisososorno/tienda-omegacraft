@@ -3,7 +3,7 @@
 ## Resumen
 
 El Evidence Pack es un PDF generado automáticamente para defensa ante chargebacks.
-Contiene 17 secciones con evidencia forense tamper-evident para productos digitales descargables.
+Contiene 17 secciones + Dispute Response Summary con evidencia forense tamper-evident para productos digitales descargables.
 
 Generado por: `pdf-lib` (puro JavaScript, sin React, sin WASM, compatible con Docker standalone).
 
@@ -12,6 +12,13 @@ Endpoint: `GET /api/admin/orders/:id/evidence-pdf`
 ---
 
 ## Secciones del PDF
+
+### DISPUTE RESPONSE SUMMARY (al inicio, después del header)
+Párrafo dinámico generado con datos reales del caso:
+- PayPal status (COMPLETED/etc)
+- ToS version + hash aceptado antes del pago
+- Delivery Completed YES/NO
+- IP/UA correlation result (MATCH/DIFFER)
 
 ### 1. ORDER SUMMARY
 Datos básicos de la orden: número, ID, status, fecha, producto, monto, datos del comprador (nombre, email, IP masked, país, ciudad).
@@ -84,15 +91,27 @@ Eventos de actividad web del comprador:
 - `download.button_clicked` — Presionó "Download Now"
 - `download.link_opened` — Abrió un link token
 - `download.access_page_viewed` — Accedió a la página de descargas (server-side)
+- `download.completed` — Descarga completada exitosamente
 
 Cada evento incluye: timestamp, IP (masked), User-Agent.
 
 ### 13. EMAIL DELIVERY LOG (Sección E)
 Eventos de envío de email:
-- `email.purchase_sent` — Email de compra enviado
-- `email.failed` — Fallo en envío
+- `email.purchase_sent` — Email de compra enviado exitosamente
+- `email.skipped` — Email omitido (reason: `not_configured` o `disabled`)
+- `email.failed` — Intento real de envío falló
 
-Datos: recipient (masked), provider (smtp), smtpHost, messageId, status, error (si falló).
+Datos: recipient (masked), provider (smtp), smtpHost, messageId, status, error (si falló), reason (si skipped).
+
+**Lógica de display en PDF:**
+- SKIPPED + Delivery Completed → "Non-critical: digital delivery completed via direct download."
+- FAILED + Delivery Completed → "Non-critical: delivery completed via direct download despite email failure."
+- FAILED + NO Delivery → "CRITICAL: email failed and delivery not yet completed."
+
+**EMAIL_MODE** (env var):
+- `disabled` → siempre `email.skipped`
+- `smtp` → intenta enviar vía SMTP
+- No definido → auto-detecta si SMTP_HOST/USER/PASS están configurados correctamente
 
 ### 14. ADMIN ACTIONS LOG
 Acciones administrativas (freeze, revoke, etc.) con timestamp y datos.
@@ -121,6 +140,7 @@ Solo si la orden está congelada: frozen at, frozen by, retention until.
 | `download.button_clicked` | Frontend (my-downloads page) | source, stageId |
 | `download.link_opened` | Frontend (tracking API) | source |
 | `email.purchase_sent` | Mailer (interno) | messageId, to (masked), provider, smtpHost, status |
+| `email.skipped` | Mailer (interno) | emailType, to (masked), reason, smtpHost |
 | `email.failed` | Mailer (interno) | emailType, to (masked), provider, error, status |
 
 ### Datos Enriquecidos en `download.completed`
@@ -151,6 +171,11 @@ Solo si la orden está congelada: frozen at, frozen by, retention until.
 ```
 
 Solo acepta event types whitelisted. Valida que orderId pertenece al email.
+
+**Seguridad:**
+- Rate limit: 20 req/min por IP (in-memory)
+- Origin/Referer validation contra APP_URL
+- Allowlist estricta de event types
 
 ---
 

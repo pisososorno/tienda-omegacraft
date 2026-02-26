@@ -396,7 +396,7 @@ export async function generateEvidencePdf(
   const dlCompletedEvents = order.events.filter((e) => e.eventType === "download.completed");
   const tokenEvents = order.events.filter((e) => e.eventType === "download.token_generated");
   const webActivityEvents = order.events.filter((e) =>
-    ["checkout.success_viewed", "downloads.page_viewed", "download.button_clicked", "download.link_opened", "download.access_page_viewed"].includes(e.eventType)
+    ["checkout.success_viewed", "downloads.page_viewed", "download.button_clicked", "download.link_opened", "download.access_page_viewed", "download.completed"].includes(e.eventType)
   );
   const emailEvents = order.events.filter((e) => e.eventType.startsWith("email."));
   const adminEvents = order.events.filter((e) => e.eventType.startsWith("admin."));
@@ -411,6 +411,45 @@ export async function generateEvidencePdf(
       `DISPUTE MODE ACTIVE - Evidence frozen at ${fmtDate(order.evidenceFrozenAt)} by ${order.evidenceFrozenByAdmin || "N/A"}`,
       C.dangerBg, C.danger, C.danger
     );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // DISPUTE RESPONSE SUMMARY (dynamic paragraph)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    w.sectionTitle("DISPUTE RESPONSE SUMMARY");
+    const deliveryDone = dlCompletedEvents.length > 0;
+    const ppStatus = (order.paypalStatus || "N/A").toUpperCase();
+    const tosVer = order.termsVersion.versionLabel;
+    const tosHash = truncate(order.termsVersion.contentHash, 12);
+
+    // IP/UA correlation
+    let correlationText = "Session correlation data is not yet available (no downloads recorded).";
+    if (deliveryDone) {
+      const chkIp = order.buyerIp || "";
+      const dlIp = dlCompletedEvents[0].ipAddress || "";
+      const chkUa = order.buyerUserAgent || "";
+      const dlUa = dlCompletedEvents[0].userAgent || "";
+      const ipOk = chkIp && dlIp && chkIp === dlIp;
+      const uaOk = chkUa && dlUa && chkUa === dlUa;
+      if (ipOk && uaOk) {
+        correlationText = "Session correlation shows IP and User-Agent MATCH between purchase and download.";
+      } else if (ipOk) {
+        correlationText = "Session correlation shows IP MATCH between purchase and download (User-Agent differs).";
+      } else if (uaOk) {
+        correlationText = "Session correlation shows User-Agent MATCH between purchase and download (IP differs).";
+      } else {
+        correlationText = "Session correlation shows IP and User-Agent DIFFER between purchase and download.";
+      }
+    }
+
+    const summary = `Payment was completed via PayPal (status: ${ppStatus}). ` +
+      `The buyer accepted the Terms of Service (${tosVer}, hash ${tosHash}...) before payment. ` +
+      `Digital delivery was ${deliveryDone ? "completed" : "NOT completed"} via secure download token and license issuance` +
+      `${deliveryDone ? ", and the file was successfully downloaded (download.completed)" : ""}. ` +
+      correlationText;
+
+    w.note(summary, C.warningBg, rgb(0.573, 0.251, 0.055), C.warning);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -530,9 +569,10 @@ export async function generateEvidencePdf(
 
   // Extract additional fields from rawCapture if available
   const raw = order.paypalRawCapture as Record<string, unknown> | null;
+  const sandboxFallback = "Not provided by PayPal in this environment (sandbox)";
   if (raw) {
-    w.kv("PayPal Create Time", safeStr(raw.create_time));
-    w.kv("PayPal Update Time", safeStr(raw.update_time));
+    w.kv("PayPal Create Time", raw.create_time ? safeStr(raw.create_time) : sandboxFallback);
+    w.kv("PayPal Update Time", raw.update_time ? safeStr(raw.update_time) : sandboxFallback);
     // Try to find merchant info
     const pu = raw.purchase_units as Array<Record<string, unknown>> | undefined;
     if (pu && pu[0]) {
@@ -542,6 +582,9 @@ export async function generateEvidencePdf(
         w.kv("Merchant ID", safeStr(payee.merchant_id));
       }
     }
+  } else {
+    w.kv("PayPal Create Time", sandboxFallback);
+    w.kv("PayPal Update Time", sandboxFallback);
   }
 
   // Webhook vs API verification
@@ -721,23 +764,51 @@ export async function generateEvidencePdf(
   // SECTION E: EMAIL DELIVERY LOG
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   w.sectionTitle("13. EMAIL DELIVERY LOG");
+  const deliveryCompletedForEmail = dlCompletedEvents.length > 0;
   if (emailEvents.length > 0) {
     for (const ev of emailEvents) {
       const d = ev.eventData as Record<string, unknown>;
-      w.ensureSpace(22);
-      const statusIcon = ev.eventType === "email.failed" ? "FAILED" : "SENT";
-      const statusColor = ev.eventType === "email.failed" ? C.danger : C.success;
-      w.text(`[${statusIcon}] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: statusColor });
-      w.y -= 9;
-      w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
-      w.y -= 9;
-      if (d.messageId) {
-        w.text(`Message-ID: ${safeStr(d.messageId)}`, 6, 6, { font: w.fontMono, color: C.textMut });
+      w.ensureSpace(28);
+
+      if (ev.eventType === "email.skipped") {
+        // SKIPPED — not configured or disabled
+        const reason = safeStr(d.reason);
+        w.text(`[SKIPPED] email.skipped`, 0, 7, { font: w.fontBold, color: C.textMut });
         w.y -= 9;
-      }
-      if (d.error) {
-        w.text(`Error: ${truncate(safeStr(d.error), 80)}`, 6, 6, { color: C.danger });
+        w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Reason: ${reason}`, 6, 6, { color: C.textSec });
         w.y -= 9;
+        if (deliveryCompletedForEmail) {
+          w.text("Non-critical: digital delivery completed via direct download.", 6, 6, { color: C.success });
+        } else {
+          w.text("Note: email not sent and delivery not yet completed.", 6, 6, { color: C.warning });
+        }
+        w.y -= 9;
+      } else if (ev.eventType === "email.failed") {
+        // FAILED — real send attempt failed
+        w.text(`[FAILED] email.failed`, 0, 7, { font: w.fontBold, color: C.danger });
+        w.y -= 9;
+        w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
+        w.y -= 9;
+        if (d.error) {
+          w.text(`Error: ${truncate(safeStr(d.error), 80)}`, 6, 6, { color: C.danger });
+          w.y -= 9;
+        }
+        if (deliveryCompletedForEmail) {
+          w.text("Non-critical: delivery completed via direct download despite email failure.", 6, 6, { color: C.success });
+        } else {
+          w.text("CRITICAL: email failed and delivery not yet completed.", 6, 6, { font: w.fontBold, color: C.danger });
+        }
+        w.y -= 9;
+      } else {
+        // SENT — success
+        w.text(`[SENT] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: C.success });
+        w.y -= 9;
+        w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
+        w.y -= 9;
+        if (d.messageId) {
+          w.text(`Message-ID: ${safeStr(d.messageId)}`, 6, 6, { font: w.fontMono, color: C.textMut });
+          w.y -= 9;
+        }
       }
       w.y -= 3;
     }
