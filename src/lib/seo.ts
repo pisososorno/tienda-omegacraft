@@ -50,6 +50,11 @@ export function webSiteSchema(storeName: string) {
     "@type": "WebSite",
     name: storeName,
     url: APP_URL,
+    publisher: {
+      "@type": "Organization",
+      name: storeName,
+      url: APP_URL,
+    },
     potentialAction: {
       "@type": "SearchAction",
       target: {

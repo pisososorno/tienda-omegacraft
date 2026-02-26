@@ -77,6 +77,7 @@ export default function LandingPage() {
             <img
               src={appearance.heroBgImage}
               alt=""
+              aria-hidden="true"
               className="w-full h-full object-cover"
               style={{
                 opacity: (appearance.heroBgImageOpacity ?? 40) / 100,
@@ -85,7 +86,7 @@ export default function LandingPage() {
               }}
             />
           ) : (
-            <img src="/images/hero/hero-bg.svg" alt="" className="w-full h-full object-cover" />
+            <img src="/images/hero/hero-bg.svg" alt="" aria-hidden="true" className="w-full h-full object-cover" />
           )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-50/10" />

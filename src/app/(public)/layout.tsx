@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Navbar } from "@/components/layout/navbar";
 import { Gamepad2 } from "lucide-react";
 import { getSettings, splitStoreName } from "@/lib/settings";
-import { organizationSchema, webSiteSchema, jsonLd } from "@/lib/seo";
 
 export default async function PublicLayout({
   children,
@@ -12,20 +11,8 @@ export default async function PublicLayout({
   const settings = await getSettings();
   const { prefix, highlight } = splitStoreName(settings.storeName);
 
-  const orgSchema = organizationSchema(settings.storeName, settings.logoUrl);
-  const siteSchema = webSiteSchema(settings.storeName);
-
   return (
     <>
-      {/* Global JSON-LD: Organization + WebSite with SearchAction */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLd(orgSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLd(siteSchema) }}
-      />
       <Navbar />
       <main className="min-h-[calc(100vh-4rem)]">{children}</main>
       <footer className="bg-slate-900 text-white" style={{ backgroundColor: "var(--site-footer-bg)", color: "var(--site-footer-text)" }}>
@@ -56,11 +43,11 @@ export default async function PublicLayout({
             <div>
               <h4 className="font-semibold text-sm uppercase tracking-wider text-slate-300 mb-4">Productos</h4>
               <ul className="space-y-2.5 text-sm">
-                <li><Link href="/catalog" className="text-slate-400 hover:text-white transition-colors">Catálogo</Link></li>
-                <li><Link href="/catalog" className="text-slate-400 hover:text-white transition-colors">Plugins</Link></li>
-                <li><Link href="/catalog" className="text-slate-400 hover:text-white transition-colors">Mapas</Link></li>
-                <li><Link href="/catalog" className="text-slate-400 hover:text-white transition-colors">Configuraciones</Link></li>
-                <li><Link href="/catalog" className="text-slate-400 hover:text-white transition-colors">Source Code</Link></li>
+                <li><Link href="/catalog" className="text-slate-400 hover:text-white transition-colors">Catálogo completo</Link></li>
+                <li><Link href="/catalog?category=plugins" className="text-slate-400 hover:text-white transition-colors">Plugins para Minecraft</Link></li>
+                <li><Link href="/catalog?category=maps" className="text-slate-400 hover:text-white transition-colors">Mapas para Minecraft</Link></li>
+                <li><Link href="/catalog?category=configurations" className="text-slate-400 hover:text-white transition-colors">Configuraciones</Link></li>
+                <li><Link href="/catalog?category=source_code" className="text-slate-400 hover:text-white transition-colors">Source Code</Link></li>
               </ul>
             </div>
 
@@ -68,7 +55,7 @@ export default async function PublicLayout({
             <div>
               <h4 className="font-semibold text-sm uppercase tracking-wider text-slate-300 mb-4">Soporte</h4>
               <ul className="space-y-2.5 text-sm">
-                <li><Link href="/my-downloads" className="text-slate-400 hover:text-white transition-colors">Mis Descargas</Link></li>
+                <li><Link href="/my-downloads" className="text-slate-400 hover:text-white transition-colors" rel="nofollow">Mis Descargas</Link></li>
                 <li><Link href="/terms" className="text-slate-400 hover:text-white transition-colors">Términos de servicio</Link></li>
                 <li><Link href="/privacy" className="text-slate-400 hover:text-white transition-colors">Política de privacidad</Link></li>
               </ul>

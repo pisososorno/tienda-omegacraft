@@ -24,7 +24,7 @@ export function Navbar() {
       style={!isHome ? { backgroundColor: "var(--site-navbar-bg, #ffffff)", color: "var(--site-navbar-text, #0f172a)" } : undefined}
     >
       <div className="container flex h-16 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 group">
+        <Link href="/" className="flex items-center gap-2.5 group" title={storeName} aria-label={`${storeName} — Ir al inicio`}>
           {logoUrl ? (
             <img src={logoUrl} alt={storeName} style={{ height: `${logoH}px` }} className="max-w-[200px] object-contain" />
           ) : (
@@ -56,7 +56,7 @@ export function Navbar() {
               Catálogo
             </Button>
           </Link>
-          <Link href="/my-downloads">
+          <Link href="/my-downloads" rel="nofollow">
             <Button
               variant="ghost"
               size="sm"

@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { getSettings } from "@/lib/settings";
 import { SiteSettingsProvider } from "@/components/providers/site-settings-provider";
+import { organizationSchema, webSiteSchema, jsonLd } from "@/lib/seo";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,7 +18,8 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s | ${storeName}`,
     },
     description:
-      "Tienda de productos digitales premium para servidores de Minecraft. Plugins, mapas, configuraciones y source code con entrega instantánea y pago seguro por PayPal.",
+      "Productos digitales premium para Minecraft: plugins, mapas, configs y source code. Entrega instantánea y pago seguro por PayPal.",
+    publisher: storeName,
     keywords: [
       "minecraft plugins",
       "minecraft maps",
@@ -40,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: storeName,
       title: `${storeName} — ${storeSlogan}`,
       description:
-        "Productos digitales premium para Minecraft. Entrega instantánea, pago seguro por PayPal.",
+        "Productos digitales premium para Minecraft: plugins, mapas, configs y source code. Entrega instantánea.",
       url: APP_URL,
     },
     twitter: {
@@ -74,6 +76,10 @@ export default async function RootLayout({
   const settings = await getSettings();
   const a = settings.appearance;
 
+  // Global JSON-LD schemas — rendered in <head> for guaranteed View Source visibility
+  const orgSchema = organizationSchema(settings.storeName, settings.logoUrl);
+  const siteSchema = webSiteSchema(settings.storeName);
+
   // CSS custom properties for dynamic theming
   const cssVars = {
     "--site-primary": a.primaryColor,
@@ -92,6 +98,14 @@ export default async function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content={a.primaryColor} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLd(orgSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLd(siteSchema) }}
+        />
       </head>
       <body className={inter.className} style={cssVars}>
         <SiteSettingsProvider settings={settings}>
