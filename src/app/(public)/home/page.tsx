@@ -184,7 +184,7 @@ export default function LandingPage() {
                       {product.coverImage ? (
                         <img
                           src={product.coverImage}
-                          alt={product.name}
+                          alt={`${product.name} — ${categoryLabels[product.category] || product.category} para Minecraft`}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                         />
                       ) : (
@@ -281,7 +281,7 @@ export default function LandingPage() {
                         {product.coverImage ? (
                           <img
                             src={product.coverImage}
-                            alt={product.name}
+                            alt={`${product.name} — producto digital para Minecraft`}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />
                         ) : (

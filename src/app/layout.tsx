@@ -6,15 +6,18 @@ import { SiteSettingsProvider } from "@/components/providers/site-settings-provi
 
 const inter = Inter({ subsets: ["latin"] });
 
+const APP_URL = process.env.APP_URL || "http://localhost:3000";
+
 export async function generateMetadata(): Promise<Metadata> {
   const { storeName, storeSlogan } = await getSettings();
   return {
+    metadataBase: new URL(APP_URL),
     title: {
       default: `${storeName} — ${storeSlogan}`,
       template: `%s | ${storeName}`,
     },
     description:
-      `Tienda de productos digitales premium para servidores de Minecraft. Plugins, mapas, configuraciones y source code con entrega instantánea y pago seguro por PayPal.`,
+      "Tienda de productos digitales premium para servidores de Minecraft. Plugins, mapas, configuraciones y source code con entrega instantánea y pago seguro por PayPal.",
     keywords: [
       "minecraft plugins",
       "minecraft maps",
@@ -38,6 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
       title: `${storeName} — ${storeSlogan}`,
       description:
         "Productos digitales premium para Minecraft. Entrega instantánea, pago seguro por PayPal.",
+      url: APP_URL,
     },
     twitter: {
       card: "summary_large_image",
@@ -55,6 +59,9 @@ export async function generateMetadata(): Promise<Metadata> {
         "max-image-preview": "large",
         "max-snippet": -1,
       },
+    },
+    alternates: {
+      canonical: "/",
     },
   };
 }
@@ -85,7 +92,6 @@ export default async function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content={a.primaryColor} />
-        <link rel="canonical" href={process.env.APP_URL || "http://localhost:3000"} />
       </head>
       <body className={inter.className} style={cssVars}>
         <SiteSettingsProvider settings={settings}>
