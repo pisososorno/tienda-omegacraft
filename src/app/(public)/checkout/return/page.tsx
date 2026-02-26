@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, XCircle, Download, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,7 @@ export default function CheckoutReturnPage() {
   const [status, setStatus] = useState<ReturnStatus>("capturing");
   const [result, setResult] = useState<CaptureResult | null>(null);
   const [error, setError] = useState("");
+  const pendingRef = useRef<{ orderId: string; email: string } | null>(null);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("pendingOrder");
@@ -29,6 +30,7 @@ export default function CheckoutReturnPage() {
     }
 
     const pending = JSON.parse(raw);
+    pendingRef.current = { orderId: pending.orderId, email: pending.email };
     sessionStorage.removeItem("pendingOrder");
 
     fetch("/api/checkout/capture", {
@@ -119,12 +121,29 @@ export default function CheckoutReturnPage() {
               </div>
 
               <div className="space-y-3">
-                <a href={result.downloadUrl} className="block">
-                  <Button className="w-full gap-2" size="lg">
-                    <Download className="h-4 w-4" />
-                    Download Now
-                  </Button>
-                </a>
+                <Button
+                  className="w-full gap-2"
+                  size="lg"
+                  onClick={() => {
+                    // Track download.button_clicked (fire-and-forget)
+                    if (pendingRef.current) {
+                      fetch("/api/track", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          orderId: pendingRef.current.orderId,
+                          email: pendingRef.current.email,
+                          eventType: "download.button_clicked",
+                          extra: { source: "checkout_success_page" },
+                        }),
+                      }).catch(() => {});
+                    }
+                    window.location.href = result.downloadUrl;
+                  }}
+                >
+                  <Download className="h-4 w-4" />
+                  Download Now
+                </Button>
                 <Button
                   variant="outline"
                   className="w-full"
