@@ -1,0 +1,257 @@
+# TERMS OF SERVICE — {{STORE_NAME}} (EN)
+**Version:** v1.1  
+**Effective date:** 2026-02-16  
+**Summary:** These Terms govern the purchase and use of digital products for Minecraft (plugins, configurations, maps, source code and downloadable content) offered by **{{STORE_NAME}}** (“we”, “us”, “the Store”). By purchasing, accessing or downloading, you agree to these Terms.
+
+---
+
+## 1) Definitions
+- **Digital Product:** downloadable or digitally accessible files (ZIP, JAR, schematics, maps, configs, source code, etc.).
+- **Order:** a purchase recorded in the Store.
+- **Delivery / Download:** access to files via link/token and/or the “My Downloads” area.
+- **Staged Delivery:** partial delivery (e.g., preview or compiled build) and/or full delivery (e.g., full source) released according to Store rules or administrative approval.
+- **Evidence/Logs:** technical records of the transaction and access (timestamps, encrypted IP, User-Agent, file hashes, system events, download events, etc.).
+- **Effective delivery:** a Digital Product is considered delivered when it is **made available** to the buyer (e.g., a download token/link is generated and enabled) and/or when there is evidence of **successful access/download** (e.g., `download.completed`).
+
+---
+
+## 2) Acceptance, eligibility and minimum age
+By using the Store, you confirm that:
+- You have legal capacity to contract, or you act with authorization from the payment method holder.
+- You understand that Digital Products are delivered electronically and may be made available immediately after payment confirmation.
+- **Minimum age / minors:** you must be **at least 16 years old** to purchase, or purchase under the authorization and supervision of an adult/payment method holder (as required by applicable law). If you are a minor, do not complete a purchase without such authorization.
+
+---
+
+## 3) Products, compatibility and descriptions
+- Product descriptions, compatibility and requirements (Minecraft versions, Paper/Spigot, dependencies, etc.) are provided on the product page.
+- We make reasonable efforts to keep information up to date, but results may vary depending on your hosting, third-party plugins, versions, or server configuration.
+- We recommend testing in a staging environment before production use.
+
+---
+
+## 4) Pricing, taxes and currency
+- Prices are displayed in the currency shown on the website (e.g., USD).
+- Taxes, fees and bank/payment processor charges may vary by country and are the buyer’s responsibility unless stated otherwise.
+
+---
+
+## 5) Payments and verification
+- Payments are processed through providers such as PayPal or other officially integrated gateways.
+- An Order is considered **paid** when the payment is **confirmed** by the processor, for example:
+  - via a validated **webhook/event**, and/or
+  - via **API verification** (e.g., confirming “COMPLETED/CAPTURED” status via the provider’s API).
+- We do not guarantee download availability if the payment is pending, under review, disputed or reversed.
+- We may hold or limit delivery when there are reasonable risk signals (fraud, abuse, unauthorized use, identity inconsistencies).
+
+---
+
+## 6) Digital delivery, links and limits
+To protect buyers and the Store:
+- Download links may expire (e.g., 15 minutes per token).
+- Download count/time limits apply (e.g., 3 downloads within 7 days), as indicated in the product or Order.
+- Files are delivered via signed links/tokens; we do not publish public direct URLs.
+- We may block or limit downloads upon reasonable signs of abuse, unauthorized use or fraud risk.
+
+---
+
+## 7) Staged Delivery
+Some products may be delivered in stages, for example:
+- **Preview/compiled stage:** initial access to a build or partial content.
+- **Full/source stage:** full delivery of source code or complete deliverables.
+
+Staged release may depend on:
+- Payment confirmation,
+- Download limit compliance,
+- Reasonable verification of payment method ownership (when applicable),
+- Administrative security decisions (e.g., high dispute risk).
+
+> Note: If a product is delivered “in stages”, this must be indicated on the product page or description.
+
+---
+
+## 8) No-refund policy (Digital Products)
+**Due to the digital nature** (instant delivery and copyability), as a general rule:
+- Purchases are **non-refundable** once the product has been **delivered or made available** for download (token/link enabled) and, especially, when there is evidence of **successful download/access** (e.g., `download.completed`).
+- Refunds may be available only if required by applicable law (e.g., mandatory consumer protection rules).
+
+In case of genuine technical issues:
+- We may offer reasonable support or replacement at our discretion, provided the issue is reproducible and not caused by the buyer’s environment.
+
+---
+
+## 9) License (permitted use)
+Unless a product states otherwise, we grant a license that is:
+- **Non-exclusive, non-transferable**, for personal use or internal use within the buyer’s server/organization.
+- Associated with the Order and may include fingerprints/identifiers (see Section 10).
+
+---
+
+## 10) Prohibited uses
+**You may not:**
+- resell, redistribute, sublicense, share or publish the product (or substantial parts) in repositories, forums, marketplaces, Discord servers, etc.
+- allow third parties to download using your links or “My Downloads” access
+- remove license notices, marks, or embedded identifiers.
+
+---
+
+## 11) Watermarking, licenses and fingerprints
+To protect content and mitigate fraud:
+- Certain products (especially source code) may include a **license block**, **identifiers** or **fingerprints** tied to the Order (e.g., order_id, email, date, fingerprint).
+- These elements do not affect functionality but help verify origin in case of redistribution or disputes.
+
+---
+
+## 12) Technical evidence, logs and disputes
+The Store may record events and metadata for:
+- operating the delivery system,
+- fraud prevention,
+- support,
+- and dispute/chargeback responses.
+
+This may include (among others):
+- UTC timestamps,
+- Terms acceptance (version + hash),
+- encrypted and masked IP,
+- User-Agent,
+- access/download logs (including `download.button_clicked` and `download.completed` when applicable),
+- file SHA256 hashes,
+- payment events (IDs and statuses).
+
+**Important:** these records are used as technical/operational evidence. We do not guarantee outcomes in disputes, as final decisions are made by the payment processor and/or card issuer.
+
+---
+
+## 13) Suspension, revocation and “dispute mode”
+We may reasonably **suspend or revoke** access/downloads if:
+- anomalous activity is detected,
+- a dispute/chargeback is opened,
+- payment is reversed,
+- these Terms are breached.
+
+In “dispute mode” we may:
+- freeze evidence tied to the Order,
+- revoke active links,
+- preserve an evidence bundle (e.g., PDF) for the Order.
+
+---
+
+## 14) Support
+- Support (if offered) is limited to what is stated on each product.
+- It does not include server administration, installation of third-party plugins, or hosting issues.
+- Response times may vary by timezone and volume.
+
+---
+
+## 15) Limitation of liability
+To the maximum extent permitted by applicable law:
+- We are not liable for indirect losses (lost profits, data loss, server downtime, reputation loss, etc.).
+- Our total liability for an Order shall not exceed the amount paid for that product, unless required otherwise by law.
+- We do not guarantee error-free operation in all environments, as behavior depends on versions, plugins and user configuration.
+
+---
+
+## 16) Service and content changes
+- We may update products (patches, improvements) or discontinue them.
+- We may update these Terms. The version accepted at purchase is recorded as evidence for that Order.
+
+---
+
+## 17) Governing law and jurisdiction
+- These Terms are interpreted under the law of the **country where the legal owner/operator of {{STORE_NAME}} operates** (**{{LEGAL_COUNTRY}}**, when applicable), unless mandatory consumer protection laws in your country provide otherwise.
+- Disputes shall be submitted to competent courts as applicable.
+
+> Note: Once you define a legal entity (e.g., a company in Chile), fill `{{LEGAL_COUNTRY}}` and, if appropriate, the city/court.
+
+---
+
+## 18) Contact
+For support and legal matters:  
+**Email:** {{CONTACT_EMAIL}}
+
+---
+
+# PRIVACY POLICY — {{STORE_NAME}} (EN)
+**Version:** v1.1  
+**Effective date:** 2026-02-16
+
+---
+
+## 1) Data we collect
+We may collect:
+- **Purchase data:** email, product, price, order IDs, payment status, processor IDs (e.g., PayPal transaction/capture id).
+- **Technical data:** UTC timestamps, User-Agent, system events, file hashes (SHA256), download/access logs.
+- **IP address:** stored **encrypted** (e.g., AES-256-GCM) and used for security/fraud prevention. In normal views it may appear masked.
+
+We do not directly receive card details when payment is processed by PayPal or another provider.
+
+---
+
+## 2) How we use your data
+- Process purchases and deliver Digital Products.
+- Prevent fraud and abuse.
+- Comply with legal/accounting obligations.
+- Respond to claims, disputes or chargebacks.
+- Improve service reliability and analytics.
+
+---
+
+## 3) Legal basis
+Depending on your jurisdiction, we process data under bases such as:
+- contract performance (delivery),
+- legitimate interests (security/fraud prevention),
+- legal obligations (accounting/tax),
+- consent (for non-essential communications where applicable).
+
+---
+
+## 4) Data retention
+- We retain order evidence and anti-fraud logs for an indicative period of **540 days** (approx. 18 months) to cover dispute windows and audits.
+- After that, we delete or anonymize where reasonably possible, unless a longer legal obligation applies.
+
+---
+
+## 5) Sharing with third parties
+We may share minimal necessary data with:
+- Payment processors (e.g., PayPal) to process transactions.
+- Infrastructure providers (hosting, databases, storage like S3/R2, email SMTP/transactional providers) to operate the service.
+- Authorities when legally required.
+
+We do not sell your personal data.
+
+---
+
+## 6) International transfers
+Our providers (hosting/CDN/email/storage) may operate in different countries. Where international transfers occur:
+- we apply reasonable security measures,
+- and select reputable providers that offer appropriate safeguards as required by applicable law.
+
+---
+
+## 7) Security
+We apply reasonable measures such as:
+- IP encryption,
+- signed download tokens,
+- append-only event logs,
+- administrative access control,
+- backups and monitoring.
+
+No system is 100% secure.
+
+---
+
+## 8) Your rights
+Depending on your country, you may have rights to:
+- access, correction, updating,
+- deletion (where applicable),
+- objection or restriction,
+- portability,
+- complaints to a supervisory authority.
+
+To exercise rights, contact us with your email and (if applicable) your order number.
+
+---
+
+## 9) Data controller and privacy contact
+**Controller:** {{LEGAL_ENTITY_NAME}} (if applicable) / Operator of {{STORE_NAME}}  
+**Privacy email:** {{PRIVACY_EMAIL}}

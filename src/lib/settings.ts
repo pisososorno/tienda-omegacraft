@@ -10,6 +10,8 @@ export interface AppearanceSettings {
   heroBgGradient: string;
   heroBgSolid: string;
   heroBgImage: string;
+  heroBgImageOpacity: number;
+  heroBgImageSize: number;
   bodyBg: string;
   cardBg: string;
   footerBg: string;
@@ -27,6 +29,8 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   heroBgGradient: "from-slate-900 via-indigo-950 to-slate-900",
   heroBgSolid: "#0f172a",
   heroBgImage: "",
+  heroBgImageOpacity: 40,
+  heroBgImageSize: 100,
   bodyBg: "#ffffff",
   cardBg: "#ffffff",
   footerBg: "#0f172a",

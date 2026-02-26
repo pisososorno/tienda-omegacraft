@@ -72,9 +72,18 @@ export default function LandingPage() {
               : undefined
         }
       >
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 overflow-hidden">
           {appearance.heroBgType === "image" && appearance.heroBgImage ? (
-            <img src={appearance.heroBgImage} alt="" className="w-full h-full object-cover" />
+            <img
+              src={appearance.heroBgImage}
+              alt=""
+              className="w-full h-full object-cover"
+              style={{
+                opacity: (appearance.heroBgImageOpacity ?? 40) / 100,
+                transform: `scale(${(appearance.heroBgImageSize ?? 100) / 100})`,
+                transformOrigin: "center center",
+              }}
+            />
           ) : (
             <img src="/images/hero/hero-bg.svg" alt="" className="w-full h-full object-cover" />
           )}

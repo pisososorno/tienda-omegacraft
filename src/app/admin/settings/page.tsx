@@ -18,6 +18,8 @@ interface AppearanceForm {
   heroBgGradient: string;
   heroBgSolid: string;
   heroBgImage: string;
+  heroBgImageOpacity: number;
+  heroBgImageSize: number;
   bodyBg: string;
   cardBg: string;
   footerBg: string;
@@ -34,6 +36,8 @@ const DEFAULT_APPEARANCE: AppearanceForm = {
   heroBgGradient: "from-slate-900 via-indigo-950 to-slate-900",
   heroBgSolid: "#0f172a",
   heroBgImage: "",
+  heroBgImageOpacity: 40,
+  heroBgImageSize: 100,
   bodyBg: "#ffffff",
   cardBg: "#ffffff",
   footerBg: "#0f172a",
@@ -143,7 +147,7 @@ export default function AdminSettingsPage() {
     setError("");
   }
 
-  function updateAppearance(field: keyof AppearanceForm, value: string) {
+  function updateAppearance(field: keyof AppearanceForm, value: string | number) {
     setAppearance((a) => ({ ...a, [field]: value }));
     setSaved(false);
     setError("");
@@ -491,63 +495,141 @@ export default function AdminSettingsPage() {
                   )}
 
                   {appearance.heroBgType === "image" && (
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">Imagen de fondo del hero</label>
-                      {appearance.heroBgImage ? (
-                        <div className="space-y-2">
-                          <div className="relative rounded-lg overflow-hidden border h-32">
-                            <img src={appearance.heroBgImage} alt="Hero BG" className="w-full h-full object-cover" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs text-muted-foreground truncate flex-1">{appearance.heroBgImage}</p>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive gap-1 h-7 text-xs"
-                              onClick={() => { updateAppearance("heroBgImage", ""); }}
-                            >
-                              <X className="h-3 w-3" /> Quitar
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <label className="flex items-center justify-center w-full h-24 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 bg-muted/30 cursor-pointer transition-colors">
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setUploadingHeroBg(true);
-                              try {
-                                const fd = new FormData();
-                                fd.append("file", file);
-                                const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
-                                const data = await res.json();
-                                if (res.ok && data.url) {
-                                  updateAppearance("heroBgImage", data.url);
-                                } else {
-                                  setError(data.error || "Error subiendo imagen");
-                                }
-                              } catch {
-                                setError("Error subiendo imagen");
-                              } finally {
-                                setUploadingHeroBg(false);
-                                e.target.value = "";
-                              }
-                            }}
-                          />
-                          {uploadingHeroBg ? (
-                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                          ) : (
-                            <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                              <ImageIcon className="h-5 w-5" />
-                              <span className="text-xs">Subir imagen de fondo (JPG, PNG, WebP — recomendado 1920x800px)</span>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Imagen de fondo del hero</label>
+                        {appearance.heroBgImage ? (
+                          <div className="space-y-2">
+                            <div className="relative rounded-lg overflow-hidden border h-32 bg-slate-900">
+                              <img
+                                src={appearance.heroBgImage}
+                                alt="Hero BG"
+                                className="w-full h-full object-cover"
+                                style={{
+                                  opacity: (appearance.heroBgImageOpacity ?? 40) / 100,
+                                  transform: `scale(${(appearance.heroBgImageSize ?? 100) / 100})`,
+                                }}
+                              />
                             </div>
-                          )}
-                        </label>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-muted-foreground truncate flex-1">{appearance.heroBgImage}</p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive gap-1 h-7 text-xs"
+                                onClick={() => { updateAppearance("heroBgImage", ""); }}
+                              >
+                                <X className="h-3 w-3" /> Quitar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="flex items-center justify-center w-full h-24 rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 bg-muted/30 cursor-pointer transition-colors">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingHeroBg(true);
+                                try {
+                                  const fd = new FormData();
+                                  fd.append("file", file);
+                                  const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+                                  const data = await res.json();
+                                  if (res.ok && data.url) {
+                                    updateAppearance("heroBgImage", data.url);
+                                  } else {
+                                    setError(data.error || "Error subiendo imagen");
+                                  }
+                                } catch {
+                                  setError("Error subiendo imagen");
+                                } finally {
+                                  setUploadingHeroBg(false);
+                                  e.target.value = "";
+                                }
+                              }}
+                            />
+                            {uploadingHeroBg ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            ) : (
+                              <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                <ImageIcon className="h-5 w-5" />
+                                <span className="text-xs">Subir imagen de fondo (JPG, PNG, WebP — recomendado 1920×800px)</span>
+                              </div>
+                            )}
+                          </label>
+                        )}
+                      </div>
+
+                      {appearance.heroBgImage && (
+                        <>
+                          <div>
+                            <label className="text-sm font-medium mb-1 block">
+                              Opacidad de la imagen — {appearance.heroBgImageOpacity ?? 40}%
+                            </label>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              step="5"
+                              value={appearance.heroBgImageOpacity ?? 40}
+                              onChange={(e) => updateAppearance("heroBgImageOpacity", parseInt(e.target.value))}
+                              className="w-full accent-primary"
+                            />
+                            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                              <span>0% (invisible)</span>
+                              <span>100% (totalmente visible)</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Valores bajos (20-40%) muestran la imagen sutil sobre fondo oscuro. Ideal para legibilidad del texto.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="text-sm font-medium mb-1 block">
+                              Zoom / Escala — {appearance.heroBgImageSize ?? 100}%
+                            </label>
+                            <input
+                              type="range"
+                              min="100"
+                              max="250"
+                              step="5"
+                              value={appearance.heroBgImageSize ?? 100}
+                              onChange={(e) => updateAppearance("heroBgImageSize", parseInt(e.target.value))}
+                              className="w-full accent-primary"
+                            />
+                            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                              <span>100% (original)</span>
+                              <span>250% (zoom maximo)</span>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border overflow-hidden">
+                            <p className="text-xs text-muted-foreground px-3 py-1.5 bg-muted/50 border-b">Vista previa del hero con imagen</p>
+                            <div
+                              className="relative h-36 overflow-hidden bg-slate-900"
+                            >
+                              <img
+                                src={appearance.heroBgImage}
+                                alt=""
+                                className="absolute inset-0 w-full h-full object-cover"
+                                style={{
+                                  opacity: (appearance.heroBgImageOpacity ?? 40) / 100,
+                                  transform: `scale(${(appearance.heroBgImageSize ?? 100) / 100})`,
+                                  transformOrigin: "center center",
+                                }}
+                              />
+                              <div className="relative flex flex-col items-center justify-center h-full text-center px-4">
+                                <span className="text-[10px] text-white/60 bg-white/10 px-2 py-0.5 rounded-full mb-1.5">{form.storeSlogan}</span>
+                                <span className="text-sm font-bold text-white">{form.heroTitle || "Titulo principal"}</span>
+                                <span className="text-[10px] text-white/50 mt-1 max-w-xs">{form.heroDescription || "Descripcion"}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </>
                       )}
                     </div>
                   )}
@@ -610,23 +692,30 @@ export default function AdminSettingsPage() {
                   </div>
                   {/* Mini hero preview */}
                   <div
-                    className="px-4 py-6 text-center text-white text-xs"
+                    className="relative overflow-hidden text-center text-white text-xs"
                     style={{
                       backgroundColor:
                         appearance.heroBgType === "solid"
                           ? appearance.heroBgSolid
-                          : appearance.heroBgType === "image"
-                            ? "#1e1b4b"
-                            : "#1e1b4b",
-                      backgroundImage:
-                        appearance.heroBgType === "image" && appearance.heroBgImage
-                          ? `url(${appearance.heroBgImage})`
-                          : undefined,
-                      backgroundSize: "cover",
+                          : "#0f172a",
                     }}
                   >
-                    <p className="font-bold">{form.storeName}</p>
-                    <p className="opacity-70 mt-1">{form.storeSlogan}</p>
+                    {appearance.heroBgType === "image" && appearance.heroBgImage && (
+                      <img
+                        src={appearance.heroBgImage}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                        style={{
+                          opacity: (appearance.heroBgImageOpacity ?? 40) / 100,
+                          transform: `scale(${(appearance.heroBgImageSize ?? 100) / 100})`,
+                          transformOrigin: "center center",
+                        }}
+                      />
+                    )}
+                    <div className="relative px-4 py-6">
+                      <p className="font-bold">{form.storeName}</p>
+                      <p className="opacity-70 mt-1">{form.storeSlogan}</p>
+                    </div>
                   </div>
                   {/* Mini body preview */}
                   <div
