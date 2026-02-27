@@ -30,6 +30,10 @@ export async function GET(req: NextRequest) {
         downloadLimit: p.downloadLimit,
         downloadExpiresDays: p.downloadExpiresDays,
         createdAt: p.createdAt.toISOString(),
+        minecraftVersionMin: p.minecraftVersionMin,
+        minecraftVersionMax: p.minecraftVersionMax,
+        supportedVersions: p.supportedVersions,
+        platforms: p.platforms,
         orderCount: p._count.orders,
         fileCount: p._count.files,
         thumbnail: p.images[0]?.storageKey || null,
@@ -47,7 +51,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, slug, shortDescription, description, category, priceUsd, metadata, videoUrl, downloadLimit, downloadExpiresDays, isActive } = body;
+    const {
+      name, slug, shortDescription, description, category, priceUsd, metadata, videoUrl,
+      downloadLimit, downloadExpiresDays, isActive,
+      minecraftVersionMin, minecraftVersionMax, supportedVersions, platforms,
+    } = body;
 
     if (!name || !slug || !description || !category || priceUsd == null) {
       return jsonError("Missing required fields: name, slug, description, category, priceUsd");
@@ -86,6 +94,10 @@ export async function POST(req: NextRequest) {
         downloadExpiresDays: downloadExpiresDays || 7,
         isActive: effectiveIsActive,
         sellerId,
+        minecraftVersionMin: minecraftVersionMin || null,
+        minecraftVersionMax: minecraftVersionMax || null,
+        supportedVersions: supportedVersions || [],
+        platforms: platforms || [],
       },
     });
 

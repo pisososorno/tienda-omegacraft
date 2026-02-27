@@ -16,6 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatVersionLabel } from "@/lib/compatibility";
 
 interface ProductFile {
   id: string;
@@ -41,6 +42,10 @@ interface ProductDetail {
   priceUsd: string;
   metadata: Record<string, unknown>;
   videoUrl?: string | null;
+  minecraftVersionMin?: string | null;
+  minecraftVersionMax?: string | null;
+  supportedVersions?: string[];
+  platforms?: string[];
   downloadLimit: number;
   downloadExpiresDays: number;
   images: ProductImage[];
@@ -352,6 +357,54 @@ export default function ProductPageClient() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Compatibilidad */}
+          {(() => {
+            const vLabel = formatVersionLabel(product.supportedVersions || [], product.minecraftVersionMin, product.minecraftVersionMax);
+            const plats = product.platforms || [];
+            if (!vLabel && plats.length === 0) return null;
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">
+                    Compatibilidad
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {vLabel && (
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Minecraft</span>
+                      {(product.supportedVersions && product.supportedVersions.length > 0) ? (
+                        <div className="flex flex-wrap gap-1">
+                          {product.supportedVersions.map((v) => (
+                            <Badge key={v} variant="secondary" className="bg-green-50 text-green-700 text-xs">
+                              {v}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <Badge variant="secondary" className="bg-green-50 text-green-700 text-xs">
+                          {vLabel}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  {plats.length > 0 && (
+                    <div>
+                      <span className="text-xs text-muted-foreground block mb-1">Plataformas</span>
+                      <div className="flex flex-wrap gap-1">
+                        {plats.map((pl) => (
+                          <Badge key={pl} variant="secondary" className="bg-blue-50 text-blue-700 text-xs">
+                            {pl}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {product.files.length > 0 && (
             <Card>

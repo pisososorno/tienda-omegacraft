@@ -73,6 +73,13 @@ model Product {
   priceUsd            Decimal          @map("price_usd") @db.Decimal(10, 2)
   metadata            Json             @default("{}") // {mc_versions, platforms, tags, changelog}
   videoUrl            String?          @map("video_url") @db.VarChar(500)
+
+  // ── Compatibility ─────────────────────────────
+  minecraftVersionMin String?          @map("minecraft_version_min") @db.VarChar(20)
+  minecraftVersionMax String?          @map("minecraft_version_max") @db.VarChar(20)
+  supportedVersions   String[]         @default([]) @map("supported_versions")
+  platforms           String[]         @default([]) @map("platforms")
+
   isActive            Boolean          @default(true) @map("is_active")
   downloadLimit       Int              @default(3) @map("download_limit")
   downloadExpiresDays Int              @default(7) @map("download_expires_days")

@@ -1,11 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Package, Tag, ArrowRight, ImageIcon, Search, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatVersionLabel, MC_VERSION_PRESETS, PLATFORMS } from "@/lib/compatibility";
+
+const VERSION_FILTER_OPTIONS = [
+  "1.8", "1.12", "1.16", "1.17", "1.18", "1.19", "1.20", "1.20.1", "1.20.4", "1.21",
+];
 
 interface Product {
   id: string;
@@ -15,6 +20,10 @@ interface Product {
   category: string;
   priceUsd: string;
   metadata: Record<string, unknown>;
+  minecraftVersionMin: string | null;
+  minecraftVersionMax: string | null;
+  supportedVersions: string[];
+  platforms: string[];
   coverImage: string | null;
 }
 
@@ -57,25 +66,53 @@ export default function CatalogPageClient() {
 
 function CatalogContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [versionFilter, setVersionFilter] = useState<string>("");
+  const [platformFilter, setPlatformFilter] = useState<string>("");
 
+  // Sync filters from URL on mount
   useEffect(() => {
     const cat = searchParams.get("category");
     if (cat && ["plugins", "maps", "configurations", "source_code"].includes(cat)) {
       setFilter(cat);
     }
+    const ver = searchParams.get("version");
+    if (ver) setVersionFilter(ver);
+    const plat = searchParams.get("platform");
+    if (plat) setPlatformFilter(plat);
   }, [searchParams]);
 
-  useEffect(() => {
-    fetch("/api/products")
+  // Fetch products with server-side filters
+  const fetchProducts = useCallback(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (versionFilter) params.set("version", versionFilter);
+    if (platformFilter) params.set("platform", platformFilter);
+    const qs = params.toString();
+    fetch(`/api/products${qs ? `?${qs}` : ""}`)
       .then((r) => r.json())
       .then(setProducts)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [versionFilter, platformFilter]);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Update URL when filters change
+  function updateUrlFilters(newCategory: string, newVersion: string, newPlatform: string) {
+    const params = new URLSearchParams();
+    if (newCategory !== "all") params.set("category", newCategory);
+    if (newVersion) params.set("version", newVersion);
+    if (newPlatform) params.set("platform", newPlatform);
+    const qs = params.toString();
+    router.replace(`/catalog${qs ? `?${qs}` : ""}`, { scroll: false });
+  }
 
   const categories = ["all", "plugins", "maps", "configurations", "source_code"];
   const categoryFilterLabels: Record<string, string> = {
@@ -128,11 +165,14 @@ function CatalogContent() {
 
       <div className="container py-8">
         {/* Category filter tabs */}
-        <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
           {categories.map((cat) => (
             <button
               key={cat}
-              onClick={() => setFilter(cat)}
+              onClick={() => {
+                setFilter(cat);
+                updateUrlFilters(cat, versionFilter, platformFilter);
+              }}
               className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap flex items-center gap-2 ${
                 filter === cat
                   ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/25"
@@ -148,6 +188,48 @@ function CatalogContent() {
               )}
             </button>
           ))}
+        </div>
+
+        {/* Version + Platform filters */}
+        <div className="flex flex-wrap gap-3 mb-8">
+          <select
+            value={versionFilter}
+            onChange={(e) => {
+              setVersionFilter(e.target.value);
+              updateUrlFilters(filter, e.target.value, platformFilter);
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
+          >
+            <option value="">Todas las versiones</option>
+            {VERSION_FILTER_OPTIONS.map((v) => (
+              <option key={v} value={v}>MC {v}</option>
+            ))}
+          </select>
+          <select
+            value={platformFilter}
+            onChange={(e) => {
+              setPlatformFilter(e.target.value);
+              updateUrlFilters(filter, versionFilter, e.target.value);
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-400/50"
+          >
+            <option value="">Todas las plataformas</option>
+            {PLATFORMS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          {(versionFilter || platformFilter) && (
+            <button
+              onClick={() => {
+                setVersionFilter("");
+                setPlatformFilter("");
+                updateUrlFilters(filter, "", "");
+              }}
+              className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-2"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -170,12 +252,15 @@ function CatalogContent() {
             <p className="text-muted-foreground mb-6">
               {searchQuery ? "Intenta con otros términos de búsqueda." : "Vuelve pronto para ver nuevos lanzamientos."}
             </p>
-            {(filter !== "all" || searchQuery) && (
+            {(filter !== "all" || searchQuery || versionFilter || platformFilter) && (
               <Button
                 variant="outline"
                 onClick={() => {
                   setFilter("all");
                   setSearchQuery("");
+                  setVersionFilter("");
+                  setPlatformFilter("");
+                  updateUrlFilters("all", "", "");
                 }}
                 className="rounded-xl"
               >
@@ -222,20 +307,38 @@ function CatalogContent() {
                         {product.shortDescription || "Producto digital premium para Minecraft."}
                       </p>
 
-                      {/* Tags */}
-                      {tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-4">
-                          {tags.slice(0, 4).map((tag: string) => (
-                            <span
-                              key={tag}
-                              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-slate-100 px-2 py-0.5 rounded-md"
-                            >
-                              <Tag className="h-2.5 w-2.5" />
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      {/* Compatibility badges */}
+                      {(() => {
+                        const vLabel = formatVersionLabel(product.supportedVersions || [], product.minecraftVersionMin, product.minecraftVersionMax);
+                        const plats = product.platforms || [];
+                        if (!vLabel && plats.length === 0 && tags.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap gap-1 mb-4">
+                            {vLabel && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-md">
+                                MC {vLabel}
+                              </span>
+                            )}
+                            {plats.slice(0, 3).map((pl) => (
+                              <span
+                                key={pl}
+                                className="inline-flex items-center text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md"
+                              >
+                                {pl}
+                              </span>
+                            ))}
+                            {tags.slice(0, 2).map((tag: string) => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-slate-100 px-2 py-0.5 rounded-md"
+                              >
+                                <Tag className="h-2.5 w-2.5" />
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
 
                       {/* Price + CTA */}
                       <div className="flex items-center justify-between pt-3 border-t">

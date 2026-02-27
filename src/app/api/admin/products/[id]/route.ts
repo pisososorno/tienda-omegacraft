@@ -41,6 +41,10 @@ export async function GET(
       isActive: product.isActive,
       metadata: product.metadata,
       videoUrl: product.videoUrl,
+      minecraftVersionMin: product.minecraftVersionMin,
+      minecraftVersionMax: product.minecraftVersionMax,
+      supportedVersions: product.supportedVersions,
+      platforms: product.platforms,
       downloadLimit: product.downloadLimit,
       downloadExpiresDays: product.downloadExpiresDays,
       createdAt: product.createdAt.toISOString(),
@@ -71,6 +75,7 @@ export async function PUT(
     const {
       name, slug, shortDescription, description, category,
       priceUsd, metadata, videoUrl, downloadLimit, downloadExpiresDays, isActive,
+      minecraftVersionMin, minecraftVersionMax, supportedVersions, platforms,
     } = body;
 
     const existing = await prisma.product.findUnique({ where: { id } });
@@ -111,6 +116,10 @@ export async function PUT(
         ...(downloadLimit !== undefined && { downloadLimit }),
         ...(downloadExpiresDays !== undefined && { downloadExpiresDays }),
         ...(effectiveIsActive !== undefined && { isActive: effectiveIsActive }),
+        ...(minecraftVersionMin !== undefined && { minecraftVersionMin: minecraftVersionMin || null }),
+        ...(minecraftVersionMax !== undefined && { minecraftVersionMax: minecraftVersionMax || null }),
+        ...(supportedVersions !== undefined && { supportedVersions: supportedVersions || [] }),
+        ...(platforms !== undefined && { platforms: platforms || [] }),
       },
     });
 

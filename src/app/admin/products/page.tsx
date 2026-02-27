@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Eye, EyeOff, Package, Loader2 } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatVersionLabel } from "@/lib/compatibility";
 
 interface ProductListItem {
   id: string;
@@ -15,6 +16,10 @@ interface ProductListItem {
   category: string;
   priceUsd: string;
   isActive: boolean;
+  minecraftVersionMin: string | null;
+  minecraftVersionMax: string | null;
+  supportedVersions: string[];
+  platforms: string[];
   orderCount: number;
   fileCount: number;
   createdAt: string;
@@ -113,6 +118,7 @@ export default function AdminProductsPage() {
                 <th className="text-left px-4 py-3 font-medium">Producto</th>
                 <th className="text-left px-4 py-3 font-medium">Categoría</th>
                 <th className="text-left px-4 py-3 font-medium">Precio</th>
+                <th className="text-left px-4 py-3 font-medium">Compatibilidad</th>
                 <th className="text-center px-4 py-3 font-medium">Archivos</th>
                 <th className="text-center px-4 py-3 font-medium">Órdenes</th>
                 <th className="text-center px-4 py-3 font-medium">Estado</th>
@@ -132,6 +138,23 @@ export default function AdminProductsPage() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 font-mono">${p.priceUsd}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {(() => {
+                        const vLabel = formatVersionLabel(p.supportedVersions || [], p.minecraftVersionMin, p.minecraftVersionMax);
+                        return vLabel ? (
+                          <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px]">
+                            MC {vLabel}
+                          </Badge>
+                        ) : null;
+                      })()}
+                      {(p.platforms || []).map((pl) => (
+                        <Badge key={pl} variant="secondary" className="bg-slate-100 text-slate-600 text-[10px]">
+                          {pl}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-center">{p.fileCount}</td>
                   <td className="px-4 py-3 text-center">{p.orderCount}</td>
                   <td className="px-4 py-3 text-center">

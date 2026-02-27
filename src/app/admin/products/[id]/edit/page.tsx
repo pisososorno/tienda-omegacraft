@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Save, Loader2, Upload, X, Star, ImageIcon, Video, FileArchive, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Upload, X, Star, ImageIcon, Video, FileArchive, Trash2, Cpu, Blocks } from "lucide-react";
+import { MC_VERSION_PRESETS, PLATFORMS } from "@/lib/compatibility";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,10 @@ interface ProductDetail {
   isActive: boolean;
   metadata: { tags?: string[] };
   videoUrl?: string | null;
+  minecraftVersionMin?: string | null;
+  minecraftVersionMax?: string | null;
+  supportedVersions?: string[];
+  platforms?: string[];
   downloadLimit: number;
   downloadExpiresDays: number;
   images: ProductImage[];
@@ -73,7 +78,11 @@ export default function EditProductPage() {
     downloadLimit: "3",
     downloadExpiresDays: "7",
     isActive: true,
+    minecraftVersionMin: "",
+    minecraftVersionMax: "",
   });
+  const [supportedVersions, setSupportedVersions] = useState<string[]>([]);
+  const [platforms, setPlatforms] = useState<string[]>([]);
 
   const fetchProduct = useCallback(() => {
     if (!params.id) return;
@@ -95,7 +104,11 @@ export default function EditProductPage() {
           downloadLimit: String(p.downloadLimit),
           downloadExpiresDays: String(p.downloadExpiresDays),
           isActive: p.isActive,
+          minecraftVersionMin: p.minecraftVersionMin || "",
+          minecraftVersionMax: p.minecraftVersionMax || "",
         });
+        setSupportedVersions(p.supportedVersions || []);
+        setPlatforms(p.platforms || []);
         setImages(p.images || []);
         setFiles(p.files || []);
       })
@@ -241,6 +254,10 @@ export default function EditProductPage() {
           downloadLimit: parseInt(form.downloadLimit) || 3,
           downloadExpiresDays: parseInt(form.downloadExpiresDays) || 7,
           isActive: form.isActive,
+          minecraftVersionMin: form.minecraftVersionMin || null,
+          minecraftVersionMax: form.minecraftVersionMax || null,
+          supportedVersions,
+          platforms,
         }),
       });
 
@@ -519,6 +536,118 @@ export default function EditProductPage() {
                   value={form.tags}
                   onChange={(e) => updateField("tags", e.target.value)}
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Compatibilidad */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Blocks className="h-4 w-4" />
+                Compatibilidad Minecraft
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Versiones soportadas — chips */}
+              <div>
+                <label className="text-sm font-medium mb-2 block">Versiones soportadas</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {supportedVersions.map((v) => (
+                    <span
+                      key={v}
+                      className="inline-flex items-center gap-1 bg-indigo-100 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-full"
+                    >
+                      {v}
+                      <button
+                        type="button"
+                        onClick={() => setSupportedVersions((prev) => prev.filter((x) => x !== v))}
+                        className="hover:text-indigo-900"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {MC_VERSION_PRESETS.filter((v) => !supportedVersions.includes(v)).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setSupportedVersions((prev) => [...prev, v].sort())}
+                      className="text-[11px] px-2 py-0.5 rounded border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 transition-colors"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Selecciona las versiones exactas soportadas. Si está vacío, se usará el rango min/max.
+                </p>
+              </div>
+
+              {/* Rango min/max como alternativa */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Versión mínima</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={form.minecraftVersionMin}
+                    onChange={(e) => updateField("minecraftVersionMin", e.target.value)}
+                  >
+                    <option value="">Sin definir</option>
+                    {MC_VERSION_PRESETS.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Versión máxima</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={form.minecraftVersionMax}
+                    onChange={(e) => updateField("minecraftVersionMax", e.target.value)}
+                  >
+                    <option value="">Sin definir</option>
+                    {MC_VERSION_PRESETS.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Plataformas */}
+              <div>
+                <label className="text-sm font-medium mb-2 block flex items-center gap-1.5">
+                  <Cpu className="h-3.5 w-3.5" />
+                  Plataformas
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {PLATFORMS.map((p) => (
+                    <label
+                      key={p}
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${
+                        platforms.includes(p)
+                          ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={platforms.includes(p)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setPlatforms((prev) => [...prev, p]);
+                          } else {
+                            setPlatforms((prev) => prev.filter((x) => x !== p));
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

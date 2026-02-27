@@ -27,12 +27,18 @@ export const SEO_CATEGORY_TITLES: Record<string, string> = {
   source_code: "Source Code para Minecraft — Código Fuente Completo",
 };
 
+// ── Branding constants ──────────────────────────────────────
+export const BRAND_LEGAL_NAME = "OmegaCraft SpA";
+export const BRAND_STORE_NAME = "OmegaCraft Store";
+
 // ── Organization schema ─────────────────────────────────────
 export function organizationSchema(storeName: string, logoUrl?: string | null) {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: storeName,
+    name: BRAND_LEGAL_NAME,
+    legalName: BRAND_LEGAL_NAME,
+    alternateName: storeName,
     url: APP_URL,
     ...(logoUrl ? { logo: logoUrl.startsWith("http") ? logoUrl : `${APP_URL}${logoUrl}` } : {}),
     contactPoint: {
@@ -48,11 +54,12 @@ export function webSiteSchema(storeName: string) {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: storeName,
+    name: BRAND_STORE_NAME,
+    alternateName: storeName,
     url: APP_URL,
     publisher: {
       "@type": "Organization",
-      name: storeName,
+      name: BRAND_LEGAL_NAME,
       url: APP_URL,
     },
     potentialAction: {
@@ -106,7 +113,7 @@ export function productSchema(p: ProductSchemaInput) {
     image: p.imageUrls.map((u) => (u.startsWith("http") ? u : `${APP_URL}${u}`)),
     brand: {
       "@type": "Brand",
-      name: "OmegaCraft",
+      name: BRAND_LEGAL_NAME,
     },
     sku: p.sku || p.slug,
     url: `${APP_URL}/catalog/${p.slug}`,
@@ -121,7 +128,7 @@ export function productSchema(p: ProductSchemaInput) {
       url: `${APP_URL}/catalog/${p.slug}`,
       seller: {
         "@type": "Organization",
-        name: "OmegaCraft",
+        name: BRAND_LEGAL_NAME,
       },
     },
   };
