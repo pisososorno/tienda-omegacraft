@@ -32,7 +32,10 @@ export async function GET(
         license: true,
         snapshots: { orderBy: { createdAt: "asc" } },
         deliveryStages: { orderBy: { stageOrder: "asc" } },
-        evidenceAttachments: { orderBy: { createdAt: "asc" } },
+        evidenceAttachments: {
+          orderBy: { createdAt: "asc" },
+          include: { admin: { select: { name: true, email: true } } },
+        },
       },
     });
 

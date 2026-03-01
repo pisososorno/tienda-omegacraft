@@ -106,6 +106,7 @@ export interface EvidenceOrderData {
     mimeType: string;
     description: string | null;
     createdAt: Date;
+    admin?: { name: string; email: string };
   }>;
 }
 
@@ -397,6 +398,22 @@ function safeStr(v: unknown): string {
   return String(v);
 }
 
+/** Map common Unicode chars to WinAnsi-safe equivalents to avoid "?" in PDF */
+function sanitizeForPdf(s: string): string {
+  return s
+    .replace(/[\u2018\u2019\u201A]/g, "'")   // smart single quotes
+    .replace(/[\u201C\u201D\u201E]/g, '"')   // smart double quotes
+    .replace(/\u2013/g, "-")                  // en-dash
+    .replace(/\u2014/g, "--")                 // em-dash
+    .replace(/\u2026/g, "...")                // ellipsis
+    .replace(/\u00A0/g, " ")                  // non-breaking space
+    .replace(/\u2022/g, "*")                  // bullet
+    .replace(/\u2122/g, "(TM)")              // trademark
+    .replace(/\u00AE/g, "(R)")               // registered
+    .replace(/\u00A9/g, "(c)")               // copyright
+    .replace(/\u200B/g, "");                  // zero-width space
+}
+
 // ── Public API ───────────────────────────────────────
 export async function generateEvidencePdf(
   order: EvidenceOrderData,
@@ -442,6 +459,7 @@ export async function generateEvidencePdf(
   }
 
   // ── Evidence Completeness Tier ──
+  const hasAttachments = order.evidenceAttachments && order.evidenceAttachments.length > 0;
   {
     const hasApiVerification = verificationMode === "API_VERIFIED";
     const hasDelivery = dlCompletedEvents.length > 0;
@@ -450,6 +468,12 @@ export async function generateEvidencePdf(
     if (hasApiVerification && hasDelivery) {
       tier = "A";
       tierLabel = "Tier A: Payment API-verified + payer identifiers + delivery logs";
+    } else if (isManualSale && verificationMode === "MANUAL_ATTESTED" && hasAttachments && hasDelivery) {
+      tier = "B";
+      tierLabel = "Tier B: Manual payment proof + delivery logs";
+    } else if (isManualSale && verificationMode === "MANUAL_ATTESTED" && hasDelivery) {
+      tier = "B";
+      tierLabel = "Tier B: Manual attestation + delivery logs";
     } else if (isManualSale && hasDelivery) {
       tier = "B";
       tierLabel = "Tier B: Manual payment proof + delivery logs";
@@ -728,7 +752,10 @@ export async function generateEvidencePdf(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   w.sectionTitle("6. TERMS OF SERVICE ACCEPTANCE");
   w.kv("Terms Version", order.termsVersion.versionLabel);
+  // Replace {{STORE_NAME}} in ToS content for display
+  const tosContentResolved = order.termsVersion.content.replace(/\{\{STORE_NAME\}\}/g, store);
   w.kv("Content Hash (SHA256)", order.termsVersion.contentHash);
+  w.kv("Hash Note", "Hash computed on raw template (before variable substitution)");
   // Use the terms.accepted event timestamp if available for consistency with chain
   const termsAcceptedEvent = order.events.find((e) => e.eventType === "terms.accepted");
   const termsTimestamp = termsAcceptedEvent ? fmtDate(termsAcceptedEvent.createdAt) : fmtDate(order.termsAcceptedAt);
@@ -736,7 +763,7 @@ export async function generateEvidencePdf(
   if (order.termsAcceptedIp) w.kv("Accepted IP", order.termsAcceptedIp);
   if (order.termsAcceptedUa) w.kv("Accepted UA", truncate(order.termsAcceptedUa, 100));
   w.note(
-    `Terms content (first 400 chars): ${truncate(order.termsVersion.content, 400)}`,
+    `Terms content (first 400 chars): ${sanitizeForPdf(truncate(tosContentResolved, 400))}`,
     C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
   );
 
@@ -971,22 +998,25 @@ export async function generateEvidencePdf(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION 14B: EXTERNAL EVIDENCE ATTACHMENTS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (order.evidenceAttachments && order.evidenceAttachments.length > 0) {
+  if (hasAttachments) {
     w.sectionTitle("15. EXTERNAL EVIDENCE ATTACHMENTS");
     w.note(
       "The following external evidence files were attached by an administrator to support this order's payment verification. Each file is stored with its SHA256 hash for integrity verification.",
       C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
     );
     for (const att of order.evidenceAttachments) {
-      w.ensureSpace(30);
+      w.ensureSpace(40);
       w.text(`${att.type.toUpperCase()}: ${att.filename}`, 0, 8, { font: w.fontBold, color: C.accent });
       w.y -= 10;
-      w.text(`Size: ${fmtSize(att.fileSize)} | MIME: ${att.mimeType} | Uploaded: ${fmtDate(att.createdAt)}`, 6, 7, { color: C.textSec });
+      const uploaderName = att.admin?.name || att.admin?.email || "admin";
+      w.text(`Size: ${fmtSize(att.fileSize)} | MIME: ${att.mimeType}`, 6, 7, { color: C.textSec });
+      w.y -= 9;
+      w.text(`Uploaded: ${fmtDate(att.createdAt)} by ${uploaderName}`, 6, 7, { color: C.textSec });
       w.y -= 9;
       w.text(`SHA256: ${att.sha256Hash}`, 6, 6, { font: w.fontMono, color: C.textMut });
       w.y -= 9;
       if (att.description) {
-        w.text(`Description: ${att.description}`, 6, 7, { color: C.textSec });
+        w.text(`Description: ${sanitizeForPdf(att.description)}`, 6, 7, { color: C.textSec });
         w.y -= 9;
       }
       w.y -= 3;
@@ -996,7 +1026,7 @@ export async function generateEvidencePdf(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION 11: FORENSIC SNAPSHOTS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const snapshotSectionNum = order.evidenceAttachments?.length > 0 ? "16" : "15";
+  const snapshotSectionNum = hasAttachments ? "16" : "15";
   w.sectionTitle(`${snapshotSectionNum}. FORENSIC PRODUCT SNAPSHOTS`);
   if (order.snapshots.length > 0) {
     for (const snap of order.snapshots) {
@@ -1023,11 +1053,13 @@ export async function generateEvidencePdf(
   }
 
   // Filter out email.skipped from the chain display (noise reduction)
+  // Re-index sequentially so there are no gaps in the displayed numbering
   const chainEvents = order.events.filter((e) => e.eventType !== "email.skipped");
   w.sectionTitle("COMPLETE EVENT CHAIN");
-  for (const ev of chainEvents) {
+  for (let i = 0; i < chainEvents.length; i++) {
+    const ev = chainEvents[i];
     w.chainEvent(
-      ev.sequenceNumber,
+      i + 1,
       ev.eventType,
       fmtDate(ev.createdAt),
       ev.ipAddress || "",
