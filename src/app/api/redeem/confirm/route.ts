@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     // 4. Build product snapshot
     const snapshotData = await buildProductSnapshotData(sale.product.id);
 
-    // 5. Create order
+    // 5. Create order (with invoice fields if present)
     const order = await prisma.order.create({
       data: {
         orderNumber,
@@ -97,6 +97,12 @@ export async function POST(req: NextRequest) {
         termsAcceptedIpEncrypted: termsIpEncrypted,
         termsAcceptedUa: ua,
         retentionExpiresAt: calculateRetentionExpiry(now),
+        // Invoice/payment fields
+        paymentMethod: sale.paymentMethod || "manual",
+        paymentReferenceUrl: sale.paymentRef || null,
+        paypalInvoiceId: sale.paypalInvoiceId || null,
+        paypalInvoiceNumber: sale.paypalInvoiceNumber || null,
+        paypalTransactionId: sale.paypalTransactionId || null,
       },
     });
 
@@ -219,6 +225,18 @@ export async function POST(req: NextRequest) {
         manualSaleId: sale.id,
         amount: sale.amount.toString(),
         currency: sale.currency,
+        // Invoice details for evidence
+        paypalInvoiceId: sale.paypalInvoiceId || null,
+        paypalInvoiceNumber: sale.paypalInvoiceNumber || null,
+        paypalTransactionId: sale.paypalTransactionId || null,
+        amountSubtotal: sale.amountSubtotal?.toString() || null,
+        amountTax: sale.amountTax?.toString() || null,
+        amountDiscount: sale.amountDiscount?.toString() || null,
+        amountShipping: sale.amountShipping?.toString() || null,
+        paypalStatus: sale.paypalStatus || null,
+        paypalPaidAt: sale.paypalPaidAt?.toISOString() || null,
+        verifiedViaApi: sale.verifiedViaApi || false,
+        verifiedAt: sale.verifiedAt?.toISOString() || null,
       },
       ipAddress: ip,
       userAgent: ua,

@@ -66,6 +66,18 @@ export async function GET(req: NextRequest) {
         notes: s.notes,
         createdBy: s.admin,
         createdAt: s.createdAt.toISOString(),
+        // Invoice details
+        paypalInvoiceId: s.paypalInvoiceId,
+        paypalInvoiceNumber: s.paypalInvoiceNumber,
+        paypalTransactionId: s.paypalTransactionId,
+        amountSubtotal: s.amountSubtotal?.toString() || null,
+        amountTax: s.amountTax?.toString() || null,
+        amountDiscount: s.amountDiscount?.toString() || null,
+        amountShipping: s.amountShipping?.toString() || null,
+        paypalStatus: s.paypalStatus,
+        paypalPaidAt: s.paypalPaidAt?.toISOString() || null,
+        verifiedViaApi: s.verifiedViaApi,
+        verifiedAt: s.verifiedAt?.toISOString() || null,
       }))
     );
   } catch (error) {
@@ -93,6 +105,14 @@ export async function POST(req: NextRequest) {
       requirePaymentFirst,
       redeemExpiresDays,
       maxRedeems,
+      // Invoice-specific fields
+      paypalInvoiceId,
+      paypalInvoiceNumber,
+      paypalTransactionId,
+      amountSubtotal,
+      amountTax,
+      amountDiscount,
+      amountShipping,
     } = body;
 
     if (!buyerEmail || !productId) {
@@ -132,6 +152,14 @@ export async function POST(req: NextRequest) {
         maxRedeems: maxRedeems || 1,
         createdByAdminId: auth.userId,
         status: requirePaymentFirst ? "sent" : "draft",
+        // Invoice-specific fields
+        paypalInvoiceId: paypalInvoiceId || null,
+        paypalInvoiceNumber: paypalInvoiceNumber || null,
+        paypalTransactionId: paypalTransactionId || null,
+        amountSubtotal: amountSubtotal ? parseFloat(amountSubtotal) : null,
+        amountTax: amountTax ? parseFloat(amountTax) : null,
+        amountDiscount: amountDiscount ? parseFloat(amountDiscount) : null,
+        amountShipping: amountShipping ? parseFloat(amountShipping) : null,
       },
     });
 

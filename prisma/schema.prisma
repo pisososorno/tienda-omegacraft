@@ -166,7 +166,11 @@ model Order {
   currency                  String      @default("USD") @db.VarChar(3)
   status                    OrderStatus @default(pending)
 
-  // PayPal fields
+  // Payment method
+  paymentMethod             String?     @map("payment_method") @db.VarChar(50) // paypal_orders | paypal_invoice | manual
+  paymentReferenceUrl       String?     @map("payment_reference_url") @db.VarChar(1000) // e.g. PayPal invoice URL
+
+  // PayPal fields (checkout flow)
   paypalOrderId             String?     @map("paypal_order_id") @db.VarChar(100)
   paypalCaptureId           String?     @map("paypal_capture_id") @db.VarChar(100)
   paypalPayerId             String?     @map("paypal_payer_id") @db.VarChar(100)
@@ -175,6 +179,11 @@ model Order {
   paypalStatus              String?     @map("paypal_status") @db.VarChar(50)
   paypalRawCapture          Json?       @map("paypal_raw_capture")
   paypalWebhookReceivedAt   DateTime?   @map("paypal_webhook_received_at") @db.Timestamptz
+
+  // PayPal Invoice fields (manual sale flow)
+  paypalInvoiceId           String?     @map("paypal_invoice_id") @db.VarChar(100)
+  paypalInvoiceNumber       String?     @map("paypal_invoice_number") @db.VarChar(100)
+  paypalTransactionId       String?     @map("paypal_transaction_id") @db.VarChar(100)
 
   // Download control
   downloadLimit             Int         @map("download_limit")
@@ -208,14 +217,15 @@ model Order {
   createdAt                 DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                 DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
-  product        Product          @relation(fields: [productId], references: [id])
-  termsVersion   TermsVersion     @relation(fields: [termsVersionId], references: [id])
-  events         OrderEvent[]
-  downloadTokens DownloadToken[]
-  license        License?
-  snapshots      OrderSnapshot[]
-  deliveryStages DeliveryStage[]
-  manualSale      ManualSale?
+  product              Product                    @relation(fields: [productId], references: [id])
+  termsVersion         TermsVersion               @relation(fields: [termsVersionId], references: [id])
+  events               OrderEvent[]
+  downloadTokens       DownloadToken[]
+  license              License?
+  snapshots            OrderSnapshot[]
+  deliveryStages       DeliveryStage[]
+  manualSale           ManualSale?
+  evidenceAttachments  PaymentEvidenceAttachment[]
 
   @@index([buyerEmail])
   @@index([paypalOrderId])
@@ -383,10 +393,24 @@ model ManualSale {
 
   // Payment info
   paymentMethod       String           @default("paypal_invoice") @map("payment_method") @db.VarChar(50) // paypal_invoice | manual
-  paymentRef          String?          @map("payment_ref") @db.VarChar(500) // invoice ID or external ref
+  paymentRef          String?          @map("payment_ref") @db.VarChar(500) // invoice URL or external ref
   paidAt              DateTime?        @map("paid_at") @db.Timestamptz
   requirePaymentFirst Boolean          @default(false) @map("require_payment_first")
   notes               String?          @db.Text
+
+  // PayPal Invoice details (for evidence)
+  paypalInvoiceId     String?          @map("paypal_invoice_id") @db.VarChar(100)
+  paypalInvoiceNumber String?          @map("paypal_invoice_number") @db.VarChar(100)
+  paypalTransactionId String?          @map("paypal_transaction_id") @db.VarChar(100)
+  amountSubtotal      Decimal?         @map("amount_subtotal") @db.Decimal(10, 2)
+  amountTax           Decimal?         @map("amount_tax") @db.Decimal(10, 2)
+  amountDiscount      Decimal?         @map("amount_discount") @db.Decimal(10, 2)
+  amountShipping      Decimal?         @map("amount_shipping") @db.Decimal(10, 2)
+  paypalStatus        String?          @map("paypal_status") @db.VarChar(50)
+  paypalPaidAt        DateTime?        @map("paypal_paid_at") @db.Timestamptz
+  paypalRaw           Json?            @map("paypal_raw") // raw PayPal API response
+  verifiedViaApi      Boolean          @default(false) @map("verified_via_api")
+  verifiedAt          DateTime?        @map("verified_at") @db.Timestamptz
 
   // Redeem token (stored as hash only)
   redeemTokenHash     String           @map("redeem_token_hash") @db.VarChar(64)
@@ -416,6 +440,28 @@ model ManualSale {
   @@index([orderId])
   @@index([createdAt])
   @@map("manual_sales")
+}
+
+// ── PAYMENT EVIDENCE ATTACHMENTS ────────────────────────
+
+model PaymentEvidenceAttachment {
+  id               String   @id @default(uuid())
+  orderId          String   @map("order_id")
+  type             String   @db.VarChar(50) // screenshot | pdf | html | text | receipt
+  filename         String   @db.VarChar(500)
+  storageKey       String   @map("storage_key") @db.VarChar(1000)
+  fileSize         BigInt   @map("file_size")
+  sha256Hash       String   @map("sha256_hash") @db.VarChar(64)
+  mimeType         String   @map("mime_type") @db.VarChar(100)
+  description      String?  @db.VarChar(500)
+  createdByAdminId String   @map("created_by_admin_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order     @relation(fields: [orderId], references: [id])
+  admin AdminUser @relation(fields: [createdByAdminId], references: [id])
+
+  @@index([orderId])
+  @@map("payment_evidence_attachments")
 }
 
 // ── SITE SETTINGS (single-row config) ─────────────────────
@@ -448,10 +494,11 @@ model AdminUser {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
 
-  sellerProfile     SellerProfile?
-  auditLogsAsActor  AdminAuditLog[] @relation("AuditActor")
-  auditLogsAsTarget AdminAuditLog[] @relation("AuditTarget")
-  manualSales       ManualSale[]
+  sellerProfile          SellerProfile?
+  auditLogsAsActor       AdminAuditLog[]             @relation("AuditActor")
+  auditLogsAsTarget      AdminAuditLog[]             @relation("AuditTarget")
+  manualSales            ManualSale[]
+  evidenceAttachments    PaymentEvidenceAttachment[]
 
   @@map("admin_users")
 }

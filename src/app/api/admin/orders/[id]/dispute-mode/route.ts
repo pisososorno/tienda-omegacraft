@@ -93,12 +93,13 @@ export async function POST(
     const orderForPdf = await prisma.order.findUnique({
       where: { id: order.id },
       include: {
-        product: true,
+        product: { include: { files: { orderBy: { sortOrder: "asc" } } } },
         termsVersion: true,
         events: { orderBy: { sequenceNumber: "asc" } },
         license: true,
         snapshots: { orderBy: { createdAt: "asc" } },
         deliveryStages: { orderBy: { stageOrder: "asc" } },
+        evidenceAttachments: { orderBy: { createdAt: "asc" } },
       },
     });
 

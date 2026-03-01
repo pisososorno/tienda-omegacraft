@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
         buyerCity: geo.city,
         amountUsd: product.priceUsd,
         status: "pending",
+        paymentMethod: "paypal_orders",
         paypalOrderId,
         downloadLimit: product.downloadLimit,
         termsVersionId: terms.id,

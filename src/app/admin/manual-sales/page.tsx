@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Copy, Loader2, Receipt, ExternalLink, Ban, Clock, CheckCircle, DollarSign, Trash2 } from "lucide-react";
+import { Plus, Copy, Loader2, Receipt, ExternalLink, Ban, Clock, CheckCircle, DollarSign, Trash2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,18 @@ interface ManualSaleItem {
   notes: string | null;
   createdBy: { id: string; name: string; email: string };
   createdAt: string;
+  // Invoice details
+  paypalInvoiceId: string | null;
+  paypalInvoiceNumber: string | null;
+  paypalTransactionId: string | null;
+  amountSubtotal: string | null;
+  amountTax: string | null;
+  amountDiscount: string | null;
+  amountShipping: string | null;
+  paypalStatus: string | null;
+  paypalPaidAt: string | null;
+  verifiedViaApi: boolean;
+  verifiedAt: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -77,7 +89,16 @@ export default function ManualSalesPage() {
     requirePaymentFirst: false,
     redeemExpiresDays: "7",
     maxRedeems: "1",
+    // Invoice-specific fields
+    paypalInvoiceId: "",
+    paypalInvoiceNumber: "",
+    paypalTransactionId: "",
+    amountSubtotal: "",
+    amountTax: "",
+    amountDiscount: "",
+    amountShipping: "",
   });
+  const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
 
   // New sale result
   const [createResult, setCreateResult] = useState<{
@@ -128,6 +149,14 @@ export default function ManualSalesPage() {
           requirePaymentFirst: form.requirePaymentFirst,
           redeemExpiresDays: parseInt(form.redeemExpiresDays) || 7,
           maxRedeems: parseInt(form.maxRedeems) || 1,
+          // Invoice details
+          paypalInvoiceId: form.paypalInvoiceId || null,
+          paypalInvoiceNumber: form.paypalInvoiceNumber || null,
+          paypalTransactionId: form.paypalTransactionId || null,
+          amountSubtotal: form.amountSubtotal || null,
+          amountTax: form.amountTax || null,
+          amountDiscount: form.amountDiscount || null,
+          amountShipping: form.amountShipping || null,
         }),
       });
       const data = await res.json();
@@ -152,6 +181,25 @@ export default function ManualSalesPage() {
       fetchSales();
     } catch {
       // ignore
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleVerifyInvoice(id: string) {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/admin/manual-sales/${id}/verify-invoice`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Verification failed");
+        return;
+      }
+      const amountWarn = data.amountMismatch ? `\n⚠️ AMOUNT MISMATCH: Sale=$${data.saleAmount}, PayPal=$${data.amountPaid || data.amountDue}` : "";
+      alert(`✅ Invoice Verified!\nID: ${data.invoiceId}\nStatus: ${data.status}\nPaid: ${data.paid ? "YES" : "NO"}\nAmount Due: $${data.amountDue || "N/A"}\nAmount Paid: $${data.amountPaid || "N/A"}${amountWarn}`);
+      fetchSales();
+    } catch {
+      alert("Verification failed");
     } finally {
       setActionLoading(null);
     }
@@ -337,6 +385,97 @@ export default function ManualSalesPage() {
                   </div>
                 </div>
 
+                {/* Invoice Details (collapsible) */}
+                {form.paymentMethod === "paypal_invoice" && (
+                  <div className="border rounded-lg p-3 space-y-3">
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                      onClick={() => setShowInvoiceDetails(!showInvoiceDetails)}
+                    >
+                      {showInvoiceDetails ? "▾" : "▸"} Detalles de Factura PayPal (para evidencia)
+                    </button>
+                    {showInvoiceDetails && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Invoice ID (INV2-...)</label>
+                            <Input
+                              value={form.paypalInvoiceId}
+                              onChange={(e) => setForm((f) => ({ ...f, paypalInvoiceId: e.target.value }))}
+                              placeholder="INV2-XXXX-XXXX-XXXX-XXXX"
+                              className="text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Invoice Number</label>
+                            <Input
+                              value={form.paypalInvoiceNumber}
+                              onChange={(e) => setForm((f) => ({ ...f, paypalInvoiceNumber: e.target.value }))}
+                              placeholder="Ej: 0001"
+                              className="text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Transaction ID</label>
+                            <Input
+                              value={form.paypalTransactionId}
+                              onChange={(e) => setForm((f) => ({ ...f, paypalTransactionId: e.target.value }))}
+                              placeholder="Id. de transaccion PayPal"
+                              className="text-xs"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Subtotal</label>
+                            <Input
+                              type="number" step="0.01"
+                              value={form.amountSubtotal}
+                              onChange={(e) => setForm((f) => ({ ...f, amountSubtotal: e.target.value }))}
+                              placeholder="0.00"
+                              className="text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Tax</label>
+                            <Input
+                              type="number" step="0.01"
+                              value={form.amountTax}
+                              onChange={(e) => setForm((f) => ({ ...f, amountTax: e.target.value }))}
+                              placeholder="0.00"
+                              className="text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Discount</label>
+                            <Input
+                              type="number" step="0.01"
+                              value={form.amountDiscount}
+                              onChange={(e) => setForm((f) => ({ ...f, amountDiscount: e.target.value }))}
+                              placeholder="0.00"
+                              className="text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1 block text-muted-foreground">Shipping</label>
+                            <Input
+                              type="number" step="0.01"
+                              value={form.amountShipping}
+                              onChange={(e) => setForm((f) => ({ ...f, amountShipping: e.target.value }))}
+                              placeholder="0.00"
+                              className="text-xs"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Estos datos se incluyen en el Evidence Pack PDF. Pega los valores exactos de la factura PayPal.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <label className="text-sm font-medium mb-1 block">Notas internas</label>
                   <Input
@@ -433,6 +572,17 @@ export default function ManualSalesPage() {
                           onClick={() => handleAction(s.id, "mark_paid")}
                         >
                           {actionLoading === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4 text-green-600" />}
+                        </Button>
+                      )}
+                      {s.paymentMethod === "paypal_invoice" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={s.verifiedViaApi ? `Verificado ${s.verifiedAt ? new Date(s.verifiedAt).toLocaleString() : ""}` : "Verificar Invoice con PayPal API"}
+                          disabled={actionLoading === s.id}
+                          onClick={() => handleVerifyInvoice(s.id)}
+                        >
+                          <ShieldCheck className={`h-4 w-4 ${s.verifiedViaApi ? "text-green-600" : "text-blue-500"}`} />
                         </Button>
                       )}
                       {s.status !== "redeemed" && s.status !== "canceled" && (

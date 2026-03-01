@@ -14,6 +14,10 @@ export interface EvidenceOrderData {
   buyerCity: string | null;
   amountUsd: unknown; // Decimal
   currency: string;
+  // Payment method & reference
+  paymentMethod: string | null;
+  paymentReferenceUrl: string | null;
+  // PayPal checkout fields
   paypalOrderId: string | null;
   paypalCaptureId: string | null;
   paypalPayerId: string | null;
@@ -22,6 +26,10 @@ export interface EvidenceOrderData {
   paypalStatus: string | null;
   paypalRawCapture: unknown | null;
   paypalWebhookReceivedAt: Date | null;
+  // PayPal Invoice fields
+  paypalInvoiceId: string | null;
+  paypalInvoiceNumber: string | null;
+  paypalTransactionId: string | null;
   downloadCount: number;
   downloadLimit: number;
   downloadsExpireAt: Date | null;
@@ -86,6 +94,16 @@ export interface EvidenceOrderData {
     downloadCount: number;
     downloadLimit: number;
     releasedAt: Date | null;
+  }>;
+  evidenceAttachments: Array<{
+    id: string;
+    type: string;
+    filename: string;
+    fileSize: bigint | number;
+    sha256Hash: string;
+    mimeType: string;
+    description: string | null;
+    createdAt: Date;
   }>;
 }
 
@@ -451,8 +469,15 @@ export async function generateEvidencePdf(
     let paymentSummary: string;
     if (isManualSale) {
       const method = manualPaymentData?.method ? String(manualPaymentData.method) : "manual";
+      const invoiceId = manualPaymentData?.paypalInvoiceId || order.paypalInvoiceId;
+      const txnId = manualPaymentData?.paypalTransactionId || order.paypalTransactionId;
+      const verified = manualPaymentData?.verifiedViaApi;
       const ref = manualPaymentData?.paymentRef ? ` (ref: ${String(manualPaymentData.paymentRef)})` : "";
-      paymentSummary = `Payment was recorded via ${method === "paypal_invoice" ? "PayPal Invoice" : "manual payment"}${ref}.`;
+      let invoiceDetail = "";
+      if (invoiceId) invoiceDetail += ` Invoice ID: ${invoiceId}.`;
+      if (txnId) invoiceDetail += ` Transaction ID: ${txnId}.`;
+      if (verified) invoiceDetail += " Payment was VERIFIED via PayPal API.";
+      paymentSummary = `Payment was recorded via ${method === "paypal_invoice" ? "PayPal Invoice" : "manual payment"}${ref}.${invoiceDetail}`;
     } else {
       paymentSummary = `Payment was completed via PayPal (status: ${ppStatus}).`;
     }
@@ -576,8 +601,48 @@ export async function generateEvidencePdf(
     w.sectionTitle("5. PAYMENT DETAILS (Manual Sale / Invoice)");
     const method = manualPaymentData?.method ? String(manualPaymentData.method) : "manual";
     w.kv("Payment Method", method === "paypal_invoice" ? "PayPal Invoice" : "Manual Payment");
-    w.kv("Payment Reference", manualPaymentData?.paymentRef ? String(manualPaymentData.paymentRef) : "N/A");
-    w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
+
+    // Invoice identifiers (critical for PayPal disputes)
+    const invoiceId = manualPaymentData?.paypalInvoiceId || order.paypalInvoiceId;
+    const invoiceNumber = manualPaymentData?.paypalInvoiceNumber || order.paypalInvoiceNumber;
+    const transactionId = manualPaymentData?.paypalTransactionId || order.paypalTransactionId;
+
+    w.kv("Invoice URL", manualPaymentData?.paymentRef ? String(manualPaymentData.paymentRef) : (order.paymentReferenceUrl || "N/A"));
+    if (invoiceId) w.kv("PayPal Invoice ID", String(invoiceId));
+    if (invoiceNumber) w.kv("PayPal Invoice Number", String(invoiceNumber));
+    if (transactionId) w.kv("PayPal Transaction ID", String(transactionId));
+
+    // Amount breakdown
+    const amountSubtotal = manualPaymentData?.amountSubtotal;
+    const amountTax = manualPaymentData?.amountTax;
+    const amountDiscount = manualPaymentData?.amountDiscount;
+    const amountShipping = manualPaymentData?.amountShipping;
+    const cur = order.currency || "USD";
+    const hasBreakdown = amountSubtotal || amountTax || amountDiscount || amountShipping;
+
+    if (hasBreakdown) {
+      if (amountSubtotal) w.kv("Subtotal", `$${amountSubtotal} ${cur}`);
+      if (amountTax && String(amountTax) !== "0") w.kv("Tax", `$${amountTax} ${cur}`);
+      if (amountDiscount && String(amountDiscount) !== "0") w.kv("Discount", `-$${amountDiscount} ${cur}`);
+      if (amountShipping && String(amountShipping) !== "0") w.kv("Shipping", `$${amountShipping} ${cur}`);
+    }
+    w.kv("Total Amount", `$${String(order.amountUsd)} ${cur}`);
+
+    // PayPal status & timing
+    const ppStatus = manualPaymentData?.paypalStatus;
+    const ppPaidAt = manualPaymentData?.paypalPaidAt;
+    if (ppStatus) w.kv("PayPal Status", String(ppStatus).toUpperCase());
+    if (ppPaidAt) w.kv("PayPal Paid At", String(ppPaidAt));
+
+    // Verification status
+    const verified = manualPaymentData?.verifiedViaApi;
+    const verifiedAt = manualPaymentData?.verifiedAt;
+    if (verified) {
+      w.kv("Verification", `Verified via PayPal API at ${verifiedAt || "N/A"}`);
+    } else {
+      w.kv("Verification", "Admin recorded (unverified via API)");
+    }
+
     w.kv("Manual Sale ID", manualPaymentData?.manualSaleId ? String(manualPaymentData.manualSaleId) : "N/A");
     if (paymentRecordedEvent) {
       w.kv("Payment Recorded At", fmtDate(paymentRecordedEvent.createdAt));
@@ -873,9 +938,35 @@ export async function generateEvidencePdf(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SECTION 14B: EXTERNAL EVIDENCE ATTACHMENTS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (order.evidenceAttachments && order.evidenceAttachments.length > 0) {
+    w.sectionTitle("15. EXTERNAL EVIDENCE ATTACHMENTS");
+    w.note(
+      "The following external evidence files were attached by an administrator to support this order's payment verification. Each file is stored with its SHA256 hash for integrity verification.",
+      C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+    );
+    for (const att of order.evidenceAttachments) {
+      w.ensureSpace(30);
+      w.text(`${att.type.toUpperCase()}: ${att.filename}`, 0, 8, { font: w.fontBold, color: C.accent });
+      w.y -= 10;
+      w.text(`Size: ${fmtSize(att.fileSize)} | MIME: ${att.mimeType} | Uploaded: ${fmtDate(att.createdAt)}`, 6, 7, { color: C.textSec });
+      w.y -= 9;
+      w.text(`SHA256: ${att.sha256Hash}`, 6, 6, { font: w.fontMono, color: C.textMut });
+      w.y -= 9;
+      if (att.description) {
+        w.text(`Description: ${att.description}`, 6, 7, { color: C.textSec });
+        w.y -= 9;
+      }
+      w.y -= 3;
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION 11: FORENSIC SNAPSHOTS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  w.sectionTitle("15. FORENSIC PRODUCT SNAPSHOTS");
+  const snapshotSectionNum = order.evidenceAttachments?.length > 0 ? "16" : "15";
+  w.sectionTitle(`${snapshotSectionNum}. FORENSIC PRODUCT SNAPSHOTS`);
   if (order.snapshots.length > 0) {
     for (const snap of order.snapshots) {
       w.kv(

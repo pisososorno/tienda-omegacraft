@@ -32,6 +32,7 @@ export async function GET(
         license: true,
         snapshots: { orderBy: { createdAt: "asc" } },
         deliveryStages: { orderBy: { stageOrder: "asc" } },
+        evidenceAttachments: { orderBy: { createdAt: "asc" } },
       },
     });
 

@@ -18,6 +18,9 @@ import {
   Loader2,
   Unlock,
   Link as LinkIcon,
+  Paperclip,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,9 +35,14 @@ interface OrderDetail {
   amountUsd: string;
   currency: string;
   status: string;
+  paymentMethod: string | null;
+  paymentReferenceUrl: string | null;
   paypalOrderId: string | null;
   paypalCaptureId: string | null;
   paypalPayerEmail: string | null;
+  paypalInvoiceId: string | null;
+  paypalInvoiceNumber: string | null;
+  paypalTransactionId: string | null;
   downloadCount: number;
   downloadLimit: number;
   downloadsExpireAt: string | null;
@@ -96,6 +104,18 @@ interface ChainIntegrity {
   brokenAtSequence: number | null;
 }
 
+interface AttachmentItem {
+  id: string;
+  type: string;
+  filename: string;
+  fileSize: string;
+  sha256Hash: string;
+  mimeType: string;
+  description: string | null;
+  createdBy: { name: string; email: string };
+  createdAt: string;
+}
+
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   paid: "bg-green-100 text-green-800",
@@ -133,6 +153,10 @@ export default function AdminOrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [attachDesc, setAttachDesc] = useState("");
+  const [attachType, setAttachType] = useState("screenshot");
 
   const fetchOrder = useCallback(() => {
     if (!params.id) return;
@@ -146,9 +170,43 @@ export default function AdminOrderDetailPage() {
       .finally(() => setLoading(false));
   }, [params.id]);
 
+  const fetchAttachments = useCallback(() => {
+    if (!params.id) return;
+    fetch(`/api/admin/orders/${params.id}/evidence-attachments`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setAttachments(data); })
+      .catch(() => {});
+  }, [params.id]);
+
   useEffect(() => {
     fetchOrder();
-  }, [fetchOrder]);
+    fetchAttachments();
+  }, [fetchOrder, fetchAttachments]);
+
+  async function handleAttachUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !order) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("type", attachType);
+      fd.append("description", attachDesc);
+      const res = await fetch(`/api/admin/orders/${order.id}/evidence-attachments`, { method: "POST", body: fd });
+      if (!res.ok) { const d = await res.json(); alert(d.error || "Upload failed"); return; }
+      setAttachDesc("");
+      fetchAttachments();
+      fetchOrder(); // refresh events
+    } catch { alert("Upload failed"); } finally { setUploading(false); e.target.value = ""; }
+  }
+
+  async function handleDeleteAttachment(attachmentId: string) {
+    if (!order || !confirm("Delete this evidence attachment?")) return;
+    try {
+      await fetch(`/api/admin/orders/${order.id}/evidence-attachments?attachmentId=${attachmentId}`, { method: "DELETE" });
+      fetchAttachments();
+    } catch { alert("Delete failed"); }
+  }
 
   async function activateDisputeMode() {
     if (!order || !confirm("Activate dispute mode? This will freeze all evidence and revoke downloads.")) return;
@@ -279,9 +337,21 @@ export default function AdminOrderDetailPage() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-sm font-medium">Payment</CardTitle></CardHeader>
             <CardContent className="text-sm space-y-1">
-              <p><span className="text-muted-foreground">PayPal Order:</span> <code className="text-xs">{order.paypalOrderId || "—"}</code></p>
-              <p><span className="text-muted-foreground">Capture:</span> <code className="text-xs">{order.paypalCaptureId || "—"}</code></p>
+              <p><span className="text-muted-foreground">Method:</span> {order.paymentMethod === "paypal_invoice" ? "PayPal Invoice" : order.paymentMethod === "paypal_orders" ? "PayPal Checkout" : order.paymentMethod || "—"}</p>
               <p><span className="text-muted-foreground">Amount:</span> ${order.amountUsd} {order.currency}</p>
+              {order.paymentMethod === "paypal_invoice" ? (
+                <>
+                  {order.paypalInvoiceId && <p><span className="text-muted-foreground">Invoice ID:</span> <code className="text-xs">{order.paypalInvoiceId}</code></p>}
+                  {order.paypalInvoiceNumber && <p><span className="text-muted-foreground">Invoice #:</span> <code className="text-xs">{order.paypalInvoiceNumber}</code></p>}
+                  {order.paypalTransactionId && <p><span className="text-muted-foreground">Transaction:</span> <code className="text-xs">{order.paypalTransactionId}</code></p>}
+                  {order.paymentReferenceUrl && <p><span className="text-muted-foreground">Ref URL:</span> <a href={order.paymentReferenceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline break-all">{order.paymentReferenceUrl.substring(0, 50)}...</a></p>}
+                </>
+              ) : (
+                <>
+                  <p><span className="text-muted-foreground">PayPal Order:</span> <code className="text-xs">{order.paypalOrderId || "—"}</code></p>
+                  <p><span className="text-muted-foreground">Capture:</span> <code className="text-xs">{order.paypalCaptureId || "—"}</code></p>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -366,6 +436,67 @@ export default function AdminOrderDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Evidence Attachments */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5" /> Evidence Attachments
+                {attachments.length > 0 && <Badge variant="secondary" className="text-xs ml-1">{attachments.length}</Badge>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Upload form */}
+              <div className="border rounded-lg p-2.5 space-y-2 bg-muted/30">
+                <div className="flex gap-2">
+                  <select
+                    className="rounded-md border border-input bg-background px-2 py-1 text-xs flex-shrink-0"
+                    value={attachType}
+                    onChange={(e) => setAttachType(e.target.value)}
+                  >
+                    <option value="screenshot">Screenshot</option>
+                    <option value="pdf">PDF</option>
+                    <option value="receipt">Receipt</option>
+                    <option value="html">HTML</option>
+                    <option value="text">Text</option>
+                  </select>
+                  <input
+                    type="text"
+                    className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                    placeholder="Description (optional)"
+                    value={attachDesc}
+                    onChange={(e) => setAttachDesc(e.target.value)}
+                  />
+                </div>
+                <label className="flex items-center justify-center gap-1.5 border-2 border-dashed rounded-md p-2 cursor-pointer hover:bg-muted/50 transition-colors">
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 text-muted-foreground" />}
+                  <span className="text-xs text-muted-foreground">{uploading ? "Uploading..." : "Upload file (PNG, JPG, PDF, HTML, max 20MB)"}</span>
+                  <input type="file" className="hidden" accept="image/png,image/jpeg,image/webp,application/pdf,text/html,text/plain" onChange={handleAttachUpload} disabled={uploading} />
+                </label>
+              </div>
+              {/* Attachment list */}
+              {attachments.length > 0 ? (
+                <div className="space-y-2">
+                  {attachments.map((a) => (
+                    <div key={a.id} className="flex items-start gap-2 text-xs border rounded p-2">
+                      <Paperclip className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{a.filename}</p>
+                        <p className="text-muted-foreground">{a.type} &middot; {(Number(a.fileSize) / 1024).toFixed(0)} KB &middot; {new Date(a.createdAt).toLocaleString()}</p>
+                        {a.description && <p className="text-muted-foreground italic">{a.description}</p>}
+                        <code className="text-[10px] text-muted-foreground/60 break-all">sha256: {a.sha256Hash.substring(0, 24)}...</code>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => handleDeleteAttachment(a.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-1">No attachments yet</p>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Snapshots */}
           {order.snapshots.length > 0 && (

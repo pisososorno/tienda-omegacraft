@@ -29,6 +29,7 @@ export async function GET(
         license: true,
         snapshots: { orderBy: { createdAt: "asc" } },
         deliveryStages: { orderBy: { stageOrder: "asc" } },
+        evidenceAttachments: { orderBy: { createdAt: "asc" } },
       },
     });
 
@@ -64,11 +65,16 @@ export async function GET(
       amountUsd: order.amountUsd.toString(),
       currency: order.currency,
       status: order.status,
+      paymentMethod: order.paymentMethod,
+      paymentReferenceUrl: order.paymentReferenceUrl,
       paypalOrderId: order.paypalOrderId,
       paypalCaptureId: order.paypalCaptureId,
       paypalPayerId: order.paypalPayerId,
       paypalPayerEmail: order.paypalPayerEmail,
       paypalStatus: order.paypalStatus,
+      paypalInvoiceId: order.paypalInvoiceId,
+      paypalInvoiceNumber: order.paypalInvoiceNumber,
+      paypalTransactionId: order.paypalTransactionId,
       downloadCount: order.downloadCount,
       downloadLimit: order.downloadLimit,
       downloadsExpireAt: order.downloadsExpireAt?.toISOString() || null,
@@ -128,6 +134,16 @@ export async function GET(
         releasedAt: st.releasedAt?.toISOString() || null,
         createdAt: st.createdAt.toISOString(),
       })),
+      evidenceAttachments: order.evidenceAttachments.map((a) => ({
+        id: a.id,
+        type: a.type,
+        filename: a.filename,
+        fileSize: a.fileSize.toString(),
+        sha256Hash: a.sha256Hash,
+        mimeType: a.mimeType,
+        description: a.description,
+        createdAt: a.createdAt.toISOString(),
+      })),
       chainIntegrity,
     });
   } catch (error) {
@@ -165,6 +181,7 @@ export async function DELETE(
       prisma.downloadToken.deleteMany({ where: { orderId: id } }),
       prisma.orderSnapshot.deleteMany({ where: { orderId: id } }),
       prisma.deliveryStage.deleteMany({ where: { orderId: id } }),
+      prisma.paymentEvidenceAttachment.deleteMany({ where: { orderId: id } }),
     ]);
 
     // Delete the order
