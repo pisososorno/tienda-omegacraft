@@ -62,6 +62,20 @@ export default function RedeemPage() {
   const [result, setResult] = useState<RedeemResult | null>(null);
   const [copied, setCopied] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loggedEventsRef = useRef<Set<string>>(new Set());
+
+  // Fire-and-forget forensic event logger
+  const logRedeemEvent = useCallback((eventType: string, data?: Record<string, unknown>) => {
+    if (!token) return;
+    // Deduplicate page_viewed / payment_page_viewed (only fire once)
+    if (eventType.includes("_viewed") && loggedEventsRef.current.has(eventType)) return;
+    loggedEventsRef.current.add(eventType);
+    fetch("/api/redeem/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, eventType, data }),
+    }).catch(() => { /* silent */ });
+  }, [token]);
 
   const loadInfo = useCallback(async (isPolling = false) => {
     if (!token) return;
@@ -83,6 +97,15 @@ export default function RedeemPage() {
   useEffect(() => {
     loadInfo(false);
   }, [loadInfo]);
+
+  // Log page_viewed once info loads successfully
+  useEffect(() => {
+    if (info && !info.pendingPayment) {
+      logRedeemEvent("redeem.page_viewed", { productName: info.product.name });
+    } else if (info?.pendingPayment) {
+      logRedeemEvent("redeem.payment_page_viewed", { productName: info.product.name });
+    }
+  }, [info, logRedeemEvent]);
 
   // Poll every 5s when payment is pending — uses PayPal Invoicing API if configured
   useEffect(() => {
@@ -347,7 +370,7 @@ export default function RedeemPage() {
 
             {/* Pay button */}
             {info.paymentUrl ? (
-              <a href={info.paymentUrl} target="_blank" rel="noopener noreferrer">
+              <a href={info.paymentUrl} target="_blank" rel="noopener noreferrer" onClick={() => logRedeemEvent("redeem.payment_link_clicked")}>
                 <Button className="w-full gap-2 h-12 text-base font-semibold bg-[#0070ba] hover:bg-[#005ea6]" size="lg">
                   <CreditCard className="h-5 w-5" />
                   Pagar factura con PayPal
@@ -423,17 +446,18 @@ export default function RedeemPage() {
               checked={termsAccepted}
               onChange={(e) => {
                 setTermsAccepted(e.target.checked);
+                if (e.target.checked) logRedeemEvent("redeem.terms_accepted");
                 setError("");
               }}
               className="rounded mt-0.5"
             />
             <span className="text-sm">
               Acepto los{" "}
-              <a href="/terms" target="_blank" className="text-indigo-600 hover:underline">
+              <a href="/terms" target="_blank" className="text-indigo-600 hover:underline" onClick={() => logRedeemEvent("redeem.terms_link_clicked", { target: "terms" })}>
                 términos y condiciones
               </a>{" "}
               y la{" "}
-              <a href="/privacy" target="_blank" className="text-indigo-600 hover:underline">
+              <a href="/privacy" target="_blank" className="text-indigo-600 hover:underline" onClick={() => logRedeemEvent("redeem.terms_link_clicked", { target: "privacy" })}>
                 política de privacidad
               </a>
               .
@@ -451,7 +475,7 @@ export default function RedeemPage() {
           <Button
             className="w-full gap-2 h-12 text-base font-semibold"
             size="lg"
-            onClick={handleConfirm}
+            onClick={() => { logRedeemEvent("redeem.confirm_clicked"); handleConfirm(); }}
             disabled={confirming || !termsAccepted}
           >
             {confirming ? (

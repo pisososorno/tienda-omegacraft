@@ -145,6 +145,15 @@ const eventIcons: Record<string, string> = {
   "admin.stage_released": "📤",
   "email.purchase_sent": "📧",
   "email.stage_released_sent": "📧",
+  "redeem.page_viewed": "👁️",
+  "redeem.payment_page_viewed": "💳",
+  "redeem.payment_link_clicked": "🔗",
+  "redeem.terms_link_clicked": "📜",
+  "redeem.terms_accepted": "✅",
+  "redeem.confirm_clicked": "🖱️",
+  "redeem.completed": "🎉",
+  "payment.recorded": "💰",
+  "admin.evidence_attached": "📎",
 };
 
 export default function AdminOrderDetailPage() {

@@ -422,6 +422,9 @@ model ManualSale {
   // Linked order (created on successful redeem)
   orderId             String?          @unique @map("order_id")
 
+  // Redeem interaction tracking (buffered before Order creation)
+  redeemInteractions  Json?            @map("redeem_interactions") // Array of {eventType, timestamp, ip, ua, data}
+
   // Admin
   createdByAdminId    String           @map("created_by_admin_id")
   metadata            Json             @default("{}")

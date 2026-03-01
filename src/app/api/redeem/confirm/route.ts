@@ -204,6 +204,29 @@ export async function POST(req: NextRequest) {
       userAgent: ua,
     });
 
+    // Replay buffered redeem interactions as forensic events (human journey proof)
+    const interactions = (sale.redeemInteractions as Array<{
+      eventType: string;
+      timestamp: string;
+      ip: string;
+      ua: string;
+      data?: Record<string, unknown>;
+    }> | null) || [];
+
+    for (const interaction of interactions) {
+      await appendEvent({
+        orderId: order.id,
+        eventType: interaction.eventType,
+        eventData: {
+          originalTimestamp: interaction.timestamp,
+          source: "redeem_flow_buffered",
+          ...(interaction.data || {}),
+        },
+        ipAddress: interaction.ip,
+        userAgent: interaction.ua,
+      });
+    }
+
     await appendEvent({
       orderId: order.id,
       eventType: "terms.accepted",
