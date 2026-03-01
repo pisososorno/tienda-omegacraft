@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, ChevronLeft, ChevronRight, Eye, Shield, AlertTriangle } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Eye, Shield, AlertTriangle, Trash2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ export default function AdminOrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   function fetchOrders(page = 1) {
     setLoading(true);
@@ -70,6 +71,23 @@ export default function AdminOrdersPage() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     fetchOrders(1);
+  }
+
+  async function handleDeleteOrder(id: string, orderNumber: string) {
+    if (!confirm(`ELIMINAR orden ${orderNumber} permanentemente?\n\nSe eliminaran todos los registros asociados (eventos, licencia, tokens, snapshots, delivery stages).\n\nEsta accion NO se puede deshacer.`)) return;
+    setDeleting(id);
+    try {
+      const res = await fetch(`/api/admin/orders/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al eliminar");
+      }
+      fetchOrders(pagination.page);
+    } catch {
+      alert("Error de red al eliminar");
+    } finally {
+      setDeleting(null);
+    }
   }
 
   return (
@@ -168,12 +186,24 @@ export default function AdminOrdersPage() {
                         {new Date(order.createdAt).toLocaleDateString()}
                       </td>
                       <td className="p-3 text-right">
-                        <Link href={`/admin/orders/${order.id}`}>
-                          <Button variant="ghost" size="sm" className="gap-1">
-                            <Eye className="h-3.5 w-3.5" />
-                            View
+                        <div className="flex items-center justify-end gap-1">
+                          <Link href={`/admin/orders/${order.id}`}>
+                            <Button variant="ghost" size="sm" className="gap-1">
+                              <Eye className="h-3.5 w-3.5" />
+                              View
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            title="Eliminar orden"
+                            disabled={deleting === order.id}
+                            onClick={() => handleDeleteOrder(order.id, order.orderNumber)}
+                          >
+                            {deleting === order.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                           </Button>
-                        </Link>
+                        </div>
                       </td>
                     </tr>
                   ))

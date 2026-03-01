@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyChain } from "@/lib/forensic";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
-import { withAdminAuth, isAuthError, ROLES_ALL, verifyOrderOwnership, isSeller } from "@/lib/rbac";
+import { withAdminAuth, isAuthError, ROLES_ALL, verifyOrderOwnership, isSeller, logAudit } from "@/lib/rbac";
 
 export async function GET(
   req: NextRequest,
@@ -132,6 +132,53 @@ export async function GET(
     });
   } catch (error) {
     console.error("[admin/orders/id]", error);
+    return jsonError("Internal server error", 500);
+  }
+}
+
+// DELETE — permanently delete an order and all related records
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const auth = await withAdminAuth(req, { roles: ["SUPER_ADMIN"] });
+  if (isAuthError(auth)) return auth;
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id },
+      select: { id: true, orderNumber: true, buyerEmail: true, status: true },
+    });
+    if (!order) return jsonError("Order not found", 404);
+
+    // Unlink any manual sale referencing this order
+    await prisma.manualSale.updateMany({
+      where: { orderId: id },
+      data: { orderId: null },
+    });
+
+    // Delete all related records
+    await prisma.$transaction([
+      prisma.orderEvent.deleteMany({ where: { orderId: id } }),
+      prisma.license.deleteMany({ where: { orderId: id } }),
+      prisma.downloadToken.deleteMany({ where: { orderId: id } }),
+      prisma.orderSnapshot.deleteMany({ where: { orderId: id } }),
+      prisma.deliveryStage.deleteMany({ where: { orderId: id } }),
+    ]);
+
+    // Delete the order
+    await prisma.order.delete({ where: { id } });
+
+    await logAudit(req, auth.userId, "order.deleted", {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+    });
+
+    return jsonOk({ success: true, deleted: true, orderNumber: order.orderNumber });
+  } catch (error) {
+    console.error("[admin/orders/id DELETE]", error);
     return jsonError("Internal server error", 500);
   }
 }

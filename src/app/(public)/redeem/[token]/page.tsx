@@ -84,10 +84,25 @@ export default function RedeemPage() {
     loadInfo(false);
   }, [loadInfo]);
 
-  // Poll every 5s when payment is pending (auto-detect when admin marks as paid)
+  // Poll every 5s when payment is pending — uses PayPal Invoicing API if configured
   useEffect(() => {
     if (info?.pendingPayment) {
-      pollRef.current = setInterval(() => loadInfo(true), 5000);
+      pollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch("/api/redeem/check-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          });
+          const data = await res.json();
+          if (data.paid) {
+            // Payment confirmed! Reload full info to show redeem form
+            await loadInfo(true);
+          }
+        } catch {
+          // Silent fail on poll — will retry next interval
+        }
+      }, 5000);
     } else if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
@@ -95,7 +110,7 @@ export default function RedeemPage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [info?.pendingPayment, loadInfo]);
+  }, [info?.pendingPayment, loadInfo, token]);
 
   async function handleConfirm() {
     if (!termsAccepted) {

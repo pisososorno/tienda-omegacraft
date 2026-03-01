@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Copy, Loader2, Receipt, ExternalLink, Ban, Clock, CheckCircle, DollarSign } from "lucide-react";
+import { Plus, Copy, Loader2, Receipt, ExternalLink, Ban, Clock, CheckCircle, DollarSign, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +152,23 @@ export default function ManualSalesPage() {
       fetchSales();
     } catch {
       // ignore
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("ELIMINAR esta venta manual permanentemente?\n\nSi tiene una orden vinculada, tambien se eliminara con todos sus registros (eventos, licencia, tokens, etc).\n\nEsta accion NO se puede deshacer.")) return;
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/admin/manual-sales/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al eliminar");
+      }
+      fetchSales();
+    } catch {
+      alert("Error de red al eliminar");
     } finally {
       setActionLoading(null);
     }
@@ -446,6 +463,16 @@ export default function ManualSalesPage() {
                       {s.status === "redeemed" && (
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Eliminar permanentemente"
+                        className="text-destructive hover:text-destructive"
+                        disabled={actionLoading === s.id}
+                        onClick={() => handleDelete(s.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </td>
                 </tr>

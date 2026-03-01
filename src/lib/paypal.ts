@@ -246,6 +246,84 @@ export async function verifyWebhookSignature(
   return data.verification_status === "SUCCESS";
 }
 
+// ── Check if PayPal API is configured ─────────────────
+export async function isPayPalConfigured(): Promise<boolean> {
+  try {
+    await getConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Invoice Status Check (Invoicing API v2) ──────────
+export interface InvoiceStatusResult {
+  invoiceId: string;
+  status: string; // PAID, SENT, DRAFT, CANCELLED, etc.
+  paid: boolean;
+  amountDue?: string;
+  amountPaid?: string;
+  currency?: string;
+}
+
+/**
+ * Extract a PayPal invoice ID from a URL like:
+ * https://www.sandbox.paypal.com/invoice/p/#INV2-VL2V-WSYW-XD6F-S5TC
+ * https://www.paypal.com/invoice/p/#INV2-VL2V-WSYW-XD6F-S5TC
+ * Or a direct invoice ID like INV2-VL2V-WSYW-XD6F-S5TC
+ */
+export function extractInvoiceId(paymentRef: string): string | null {
+  if (!paymentRef) return null;
+  // Direct invoice ID
+  if (/^INV2?-/i.test(paymentRef.trim())) return paymentRef.trim();
+  // Extract from URL (after # or last path segment)
+  const hashMatch = paymentRef.match(/#(INV2?-[A-Z0-9-]+)/i);
+  if (hashMatch) return hashMatch[1];
+  const pathMatch = paymentRef.match(/\/(INV2?-[A-Z0-9-]+)/i);
+  if (pathMatch) return pathMatch[1];
+  return null;
+}
+
+/**
+ * Query PayPal Invoicing API to get invoice status.
+ * Returns null if invoice not found or API error.
+ */
+export async function getInvoiceStatus(invoiceId: string): Promise<InvoiceStatusResult | null> {
+  try {
+    const { baseUrl } = await getConfig();
+    const token = await getAccessToken();
+
+    const res = await fetch(`${baseUrl}/v2/invoicing/invoices/${invoiceId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      console.error(`[paypal] Invoice status check failed: ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const status = data.status || "UNKNOWN";
+    const paid = status === "PAID" || status === "MARKED_AS_PAID";
+
+    return {
+      invoiceId,
+      status,
+      paid,
+      amountDue: data.amount?.value,
+      amountPaid: data.payments?.transactions?.[0]?.amount?.value,
+      currency: data.amount?.currency_code,
+    };
+  } catch (err) {
+    console.error("[paypal] getInvoiceStatus error:", err);
+    return null;
+  }
+}
+
 // ── Extract PayPal Event ID from webhook payload ─────
 export function extractPayPalEventId(
   payload: Record<string, unknown>

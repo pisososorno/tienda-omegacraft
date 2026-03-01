@@ -133,3 +133,49 @@ export async function PUT(
     return jsonError("Internal server error", 500);
   }
 }
+
+// DELETE — permanently delete a manual sale (and linked order if any)
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const auth = await withAdminAuth(req, { roles: ["SUPER_ADMIN"] });
+  if (isAuthError(auth)) return auth;
+
+  try {
+    const sale = await prisma.manualSale.findUnique({
+      where: { id },
+      select: { id: true, orderId: true, buyerEmailMasked: true, status: true },
+    });
+    if (!sale) return jsonError("Manual sale not found", 404);
+
+    // If linked order exists, delete all related records first
+    if (sale.orderId) {
+      await prisma.$transaction([
+        prisma.orderEvent.deleteMany({ where: { orderId: sale.orderId } }),
+        prisma.license.deleteMany({ where: { orderId: sale.orderId } }),
+        prisma.downloadToken.deleteMany({ where: { orderId: sale.orderId } }),
+        prisma.orderSnapshot.deleteMany({ where: { orderId: sale.orderId } }),
+        prisma.deliveryStage.deleteMany({ where: { orderId: sale.orderId } }),
+      ]);
+      // Unlink order from sale before deleting
+      await prisma.manualSale.update({ where: { id }, data: { orderId: null } });
+      await prisma.order.delete({ where: { id: sale.orderId } });
+    }
+
+    await prisma.manualSale.delete({ where: { id } });
+
+    await logAudit(req, auth.userId, "manual_sale.deleted", {
+      manualSaleId: id,
+      hadOrder: !!sale.orderId,
+      buyerEmailMasked: sale.buyerEmailMasked,
+      status: sale.status,
+    });
+
+    return jsonOk({ success: true, deleted: true });
+  } catch (error) {
+    console.error("[api/admin/manual-sales/id DELETE]", error);
+    return jsonError("Internal server error", 500);
+  }
+}

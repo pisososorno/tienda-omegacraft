@@ -166,14 +166,24 @@ export default function EditProductPage() {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
 
+      console.log(`[upload] Starting XHR upload: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB) → ${url}`);
+
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
           const pct = Math.round((e.loaded / e.total) * 100);
+          console.log(`[upload] progress: ${pct}% (${(e.loaded / 1024 / 1024).toFixed(1)}MB / ${(e.total / 1024 / 1024).toFixed(1)}MB)`);
           setUploadProgress(pct);
+        } else {
+          console.log(`[upload] progress event: NOT lengthComputable, loaded=${e.loaded}`);
         }
       });
 
+      xhr.upload.addEventListener("loadend", () => {
+        console.log(`[upload] upload.loadend — browser finished sending data`);
+      });
+
       xhr.addEventListener("load", () => {
+        console.log(`[upload] XHR load: status=${xhr.status}`);
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve();
         } else {
@@ -186,8 +196,17 @@ export default function EditProductPage() {
         }
       });
 
-      xhr.addEventListener("error", () => reject(new Error("Error de red al subir archivo")));
-      xhr.addEventListener("timeout", () => reject(new Error("Tiempo de espera agotado")));
+      xhr.addEventListener("error", (e) => {
+        console.error(`[upload] XHR error event:`, e);
+        reject(new Error("Error de red al subir archivo"));
+      });
+      xhr.addEventListener("timeout", () => {
+        console.error(`[upload] XHR timeout after ${xhr.timeout}ms`);
+        reject(new Error("Tiempo de espera agotado"));
+      });
+      xhr.addEventListener("abort", () => {
+        console.error(`[upload] XHR aborted`);
+      });
       xhr.timeout = 600000; // 10 minutes
 
       const formData = new FormData();
