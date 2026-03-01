@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Package, Shield, Download, CheckCircle, Loader2, AlertCircle, Copy, ExternalLink } from "lucide-react";
+import { Package, Shield, Download, CheckCircle, Loader2, AlertCircle, Copy, ExternalLink, CreditCard, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ interface RedeemInfo {
   paymentMethod: string;
   buyerName: string | null;
   expiresAt: string;
+  pendingPayment?: boolean;
+  paymentUrl?: string | null;
 }
 
 interface RedeemResult {
@@ -59,19 +61,41 @@ export default function RedeemPage() {
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<RedeemResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const loadInfo = useCallback(async (isPolling = false) => {
     if (!token) return;
-    fetch(`/api/redeem/${token}`)
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error || "Enlace no válido");
-        setInfo(data);
-        if (data.buyerName) setBuyerName(data.buyerName);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    try {
+      const r = await fetch(`/api/redeem/${token}`);
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Enlace no válido");
+      setInfo(data);
+      if (!isPolling && data.buyerName) setBuyerName(data.buyerName);
+      setError("");
+    } catch (err: unknown) {
+      if (!isPolling) setError(err instanceof Error ? err.message : "Enlace no válido");
+    } finally {
+      if (!isPolling) setLoading(false);
+    }
   }, [token]);
+
+  // Initial load
+  useEffect(() => {
+    loadInfo(false);
+  }, [loadInfo]);
+
+  // Poll every 5s when payment is pending (auto-detect when admin marks as paid)
+  useEffect(() => {
+    if (info?.pendingPayment) {
+      pollRef.current = setInterval(() => loadInfo(true), 5000);
+    } else if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [info?.pendingPayment, loadInfo]);
 
   async function handleConfirm() {
     if (!termsAccepted) {
@@ -209,6 +233,135 @@ export default function RedeemPage() {
   );
   const plats = info.product.platforms || [];
 
+  // Shared product card
+  const productCard = (
+    <div className="flex gap-4 items-start p-4 bg-slate-50 rounded-lg">
+      {info.product.coverImage ? (
+        <img
+          src={info.product.coverImage}
+          alt={info.product.name}
+          className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+        />
+      ) : (
+        <div className="w-20 h-20 rounded-lg bg-slate-200 flex items-center justify-center flex-shrink-0">
+          <Package className="h-8 w-8 text-slate-400" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <Badge variant="secondary" className="mb-1 text-xs">
+          {categoryLabels[info.product.category] || info.product.category}
+        </Badge>
+        <h2 className="font-bold text-lg leading-tight">{info.product.name}</h2>
+        {info.product.shortDescription && (
+          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
+            {info.product.shortDescription}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-1 mt-2">
+          {vLabel && (
+            <span className="text-[10px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
+              MC {vLabel}
+            </span>
+          )}
+          {plats.map((p) => (
+            <span key={p} className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+              {p}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── PENDING PAYMENT STATE ──────────────────────────
+  if (info.pendingPayment) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-amber-50 p-4">
+        <Card className="max-w-lg w-full">
+          <CardHeader className="text-center pb-2">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <CreditCard className="h-6 w-6 text-amber-600" />
+              <CardTitle className="text-xl">Pago pendiente</CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Completa el pago para activar tu producto
+            </p>
+          </CardHeader>
+
+          <CardContent className="space-y-5">
+            {productCard}
+
+            {/* Price */}
+            <div className="text-center">
+              <span className="text-3xl font-extrabold">${info.amount}</span>
+              <span className="text-muted-foreground ml-1">{info.currency}</span>
+            </div>
+
+            {/* Steps */}
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-white text-sm font-bold flex-shrink-0">1</div>
+                <div>
+                  <p className="font-semibold text-sm text-amber-900">Paga la factura</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {info.paymentUrl
+                      ? "Haz click en el boton de abajo para pagar con PayPal."
+                      : "Realiza el pago usando el metodo indicado por el vendedor."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-300 text-white text-sm font-bold flex-shrink-0">2</div>
+                <div>
+                  <p className="font-semibold text-sm text-slate-600">Espera confirmacion</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Una vez que se confirme tu pago, esta pagina se actualizara automaticamente.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-slate-300 text-white text-sm font-bold flex-shrink-0">3</div>
+                <div>
+                  <p className="font-semibold text-sm text-slate-600">Descarga tu producto</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Acepta los terminos y descarga tu archivo inmediatamente.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Pay button */}
+            {info.paymentUrl ? (
+              <a href={info.paymentUrl} target="_blank" rel="noopener noreferrer">
+                <Button className="w-full gap-2 h-12 text-base font-semibold bg-[#0070ba] hover:bg-[#005ea6]" size="lg">
+                  <CreditCard className="h-5 w-5" />
+                  Pagar factura con PayPal
+                  <ExternalLink className="h-4 w-4 ml-1" />
+                </Button>
+              </a>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+                <p className="font-medium">Metodo de pago: {info.paymentMethod === "paypal_invoice" ? "Factura PayPal" : info.paymentMethod}</p>
+                <p className="text-blue-700 mt-1">Contacta al vendedor para obtener instrucciones de pago.</p>
+              </div>
+            )}
+
+            {/* Polling indicator */}
+            <div className="flex items-center justify-center gap-2 text-xs text-amber-600">
+              <Clock className="h-3.5 w-3.5 animate-pulse" />
+              <span>Esperando confirmacion de pago... esta pagina se actualiza automaticamente.</span>
+            </div>
+
+            <div className="text-center text-xs text-muted-foreground">
+              <p>Enlace valido hasta: {new Date(info.expiresAt).toLocaleString()}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── NORMAL REDEEM FORM ──────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 p-4">
       <Card className="max-w-lg w-full">
@@ -223,43 +376,7 @@ export default function RedeemPage() {
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {/* Product info */}
-          <div className="flex gap-4 items-start p-4 bg-slate-50 rounded-lg">
-            {info.product.coverImage ? (
-              <img
-                src={info.product.coverImage}
-                alt={info.product.name}
-                className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-20 h-20 rounded-lg bg-slate-200 flex items-center justify-center flex-shrink-0">
-                <Package className="h-8 w-8 text-slate-400" />
-              </div>
-            )}
-            <div className="min-w-0">
-              <Badge variant="secondary" className="mb-1 text-xs">
-                {categoryLabels[info.product.category] || info.product.category}
-              </Badge>
-              <h2 className="font-bold text-lg leading-tight">{info.product.name}</h2>
-              {info.product.shortDescription && (
-                <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">
-                  {info.product.shortDescription}
-                </p>
-              )}
-              <div className="flex flex-wrap gap-1 mt-2">
-                {vLabel && (
-                  <span className="text-[10px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                    MC {vLabel}
-                  </span>
-                )}
-                {plats.map((p) => (
-                  <span key={p} className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
+          {productCard}
 
           {/* Price */}
           <div className="text-center">

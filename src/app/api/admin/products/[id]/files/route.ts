@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
+import { Readable } from "stream";
+import crypto from "crypto";
+import Busboy from "busboy";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
 import { withAdminAuth, isAuthError, ROLES_ALL, verifyProductOwnership, isSeller } from "@/lib/rbac";
 import { uploadFile, deleteFile } from "@/lib/storage";
-import crypto from "crypto";
 
-// Allow large file uploads (Next.js App Router defaults to ~4MB)
+// Allow large file uploads
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes for large uploads
 
@@ -17,6 +19,81 @@ const ALLOWED_EXTENSIONS = [
   ".mcworld", ".mcpack", ".mcaddon",
   ".png", ".jpg", ".txt", ".md", ".pdf",
 ];
+
+interface ParsedFile {
+  filename: string;
+  mimeType: string;
+  buffer: Buffer;
+  sha256Hash: string;
+  size: number;
+}
+
+/**
+ * Parse multipart form data using busboy (streaming).
+ * This drains the socket continuously, preventing TCP backpressure
+ * that would stall XHR upload progress events in the browser.
+ */
+function parseMultipart(req: NextRequest): Promise<ParsedFile> {
+  return new Promise((resolve, reject) => {
+    const contentType = req.headers.get("content-type") || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return reject(new Error("Expected multipart/form-data"));
+    }
+
+    const bb = Busboy({
+      headers: { "content-type": contentType },
+      limits: { fileSize: MAX_FILE_SIZE, files: 1 },
+    });
+
+    let fileFound = false;
+
+    bb.on("file", (_fieldname: string, stream: Readable, info: { filename: string; mimeType: string }) => {
+      fileFound = true;
+      const { filename, mimeType } = info;
+      const chunks: Buffer[] = [];
+      const hash = crypto.createHash("sha256");
+      let size = 0;
+      let limitExceeded = false;
+
+      stream.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > MAX_FILE_SIZE) {
+          limitExceeded = true;
+          stream.destroy();
+          return;
+        }
+        chunks.push(chunk);
+        hash.update(chunk);
+      });
+
+      stream.on("end", () => {
+        if (limitExceeded) {
+          return reject(new Error(`File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB`));
+        }
+        resolve({
+          filename,
+          mimeType: mimeType || "application/octet-stream",
+          buffer: Buffer.concat(chunks),
+          sha256Hash: hash.digest("hex"),
+          size,
+        });
+      });
+
+      stream.on("error", reject);
+    });
+
+    bb.on("error", reject);
+    bb.on("close", () => {
+      if (!fileFound) reject(new Error("No file provided"));
+    });
+
+    // Pipe the request body into busboy to start streaming
+    const body = req.body;
+    if (!body) return reject(new Error("No request body"));
+    const nodeStream = Readable.fromWeb(body as import("stream/web").ReadableStream);
+    nodeStream.pipe(bb);
+  });
+}
 
 // GET — list files for a product
 export async function GET(
@@ -45,7 +122,7 @@ export async function GET(
   );
 }
 
-// POST — upload a new file for a product
+// POST — upload a new file for a product (streaming via busboy)
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -60,34 +137,22 @@ export async function POST(
   if (isSeller(auth) && product.sellerId !== auth.sellerId) return jsonError("Product not found", 404);
 
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-
-    if (!file) return jsonError("No file provided", 400);
-
-    // Validate size
-    if (file.size > MAX_FILE_SIZE) {
-      return jsonError(`File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB`, 400);
-    }
+    // Stream-parse multipart data (prevents TCP backpressure → XHR progress works)
+    const file = await parseMultipart(req);
 
     // Validate extension
-    const filename = file.name;
-    const ext = "." + filename.split(".").pop()?.toLowerCase();
-    if (!ALLOWED_EXTENSIONS.some((e) => filename.toLowerCase().endsWith(e))) {
+    const ext = "." + file.filename.split(".").pop()?.toLowerCase();
+    if (!ALLOWED_EXTENSIONS.some((e) => file.filename.toLowerCase().endsWith(e))) {
       return jsonError(`Extension not allowed: ${ext}`, 400);
     }
 
-    // Read file buffer and compute SHA-256
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const sha256Hash = crypto.createHash("sha256").update(buffer).digest("hex");
-
     // Generate storage key
     const timestamp = Date.now();
-    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const safeFilename = file.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     const storageKey = `products/${id}/${timestamp}-${safeFilename}`;
 
     // Upload to storage (S3 or local)
-    await uploadFile(storageKey, buffer, file.type || "application/octet-stream");
+    await uploadFile(storageKey, file.buffer, file.mimeType);
 
     // Count existing files for sort order
     const existingCount = await prisma.productFile.count({ where: { productId: id } });
@@ -96,11 +161,11 @@ export async function POST(
     const productFile = await prisma.productFile.create({
       data: {
         productId: id,
-        filename: filename,
+        filename: file.filename,
         storageKey: storageKey,
         fileSize: BigInt(file.size),
-        sha256Hash: sha256Hash,
-        mimeType: file.type || "application/octet-stream",
+        sha256Hash: file.sha256Hash,
+        mimeType: file.mimeType,
         sortOrder: existingCount,
         isPrimary: existingCount === 0,
       },
@@ -117,7 +182,8 @@ export async function POST(
     });
   } catch (error) {
     console.error("[api/admin/products/files POST]", error);
-    return jsonError("Error uploading file", 500);
+    const msg = error instanceof Error ? error.message : "Error uploading file";
+    return jsonError(msg, 500);
   }
 }
 

@@ -53,12 +53,18 @@ export async function GET(
     if (sale.status === "expired" || new Date() > sale.redeemExpiresAt) {
       return jsonError("Este enlace ha expirado.", 410);
     }
-    if (sale.requirePaymentFirst && sale.status === "sent") {
-      return jsonError("El pago aún no ha sido confirmado. Contacta al vendedor.", 402);
-    }
+    // Determine if payment is pending
+    const pendingPayment = sale.requirePaymentFirst && sale.status === "sent";
 
     // Return public info
     const coverImage = sale.product.images[0]?.storageKey || null;
+
+    // Build payment link if available (only for pending payments)
+    let paymentUrl: string | null = null;
+    if (pendingPayment && sale.paymentRef) {
+      // If paymentRef is a URL, use it directly; otherwise treat as reference ID
+      paymentUrl = sale.paymentRef.startsWith("http") ? sale.paymentRef : null;
+    }
 
     return jsonOk({
       id: sale.id,
@@ -83,6 +89,8 @@ export async function GET(
       paymentMethod: sale.paymentMethod,
       buyerName: sale.buyerName,
       expiresAt: sale.redeemExpiresAt.toISOString(),
+      pendingPayment,
+      paymentUrl,
     });
   } catch (error) {
     console.error("[api/redeem/token GET]", error);
