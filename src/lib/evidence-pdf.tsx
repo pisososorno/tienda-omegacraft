@@ -30,6 +30,8 @@ export interface EvidenceOrderData {
   paypalInvoiceId: string | null;
   paypalInvoiceNumber: string | null;
   paypalTransactionId: string | null;
+  // Verification mode
+  paymentVerificationMode: string | null;
   downloadCount: number;
   downloadLimit: number;
   downloadsExpireAt: Date | null;
@@ -416,7 +418,8 @@ export async function generateEvidencePdf(
   const webActivityEvents = order.events.filter((e) =>
     ["checkout.success_viewed", "downloads.page_viewed", "download.button_clicked", "download.link_opened", "download.access_page_viewed", "download.completed"].includes(e.eventType)
   );
-  const emailEvents = order.events.filter((e) => e.eventType.startsWith("email."));
+  const emailSentEvents = order.events.filter((e) => e.eventType.startsWith("email.") && e.eventType !== "email.skipped");
+  const emailSkippedOnly = order.events.some((e) => e.eventType === "email.skipped") && emailSentEvents.length === 0;
   const adminEvents = order.events.filter((e) => e.eventType.startsWith("admin."));
   const paymentCapturedEvent = order.events.find((e) => e.eventType === "payment.captured");
   const paymentRecordedEvent = order.events.find((e) => e.eventType === "payment.recorded");
@@ -424,6 +427,8 @@ export async function generateEvidencePdf(
   const orderCreatedEvent = order.events.find((e) => e.eventType === "order.created");
   const isManualSale = !!(paymentRecordedEvent || (orderCreatedEvent && (orderCreatedEvent.eventData as Record<string, unknown>)?.source === "manual_sale"));
   const manualPaymentData = paymentRecordedEvent ? paymentRecordedEvent.eventData as Record<string, unknown> : null;
+  const verificationMode = order.paymentVerificationMode || (manualPaymentData?.verifiedViaApi ? "API_VERIFIED" : (isManualSale ? "MANUAL_ATTESTED" : null));
+  const redeemEvents = order.events.filter((e) => e.eventType.startsWith("redeem."));
 
   // ── Header ──
   w.header("EVIDENCE PACK - CHARGEBACK DEFENSE", `Document ${documentId} | Generated ${fmtDate(now)} by ${generatedBy}`);
@@ -431,9 +436,28 @@ export async function generateEvidencePdf(
   // Dispute freeze banner
   if (order.evidenceFrozenAt) {
     w.note(
-      `DISPUTE MODE ACTIVE - Evidence frozen at ${fmtDate(order.evidenceFrozenAt)} by ${order.evidenceFrozenByAdmin || "N/A"}`,
+      `DISPUTE MODE ACTIVE - Evidence frozen at ${fmtDate(order.evidenceFrozenAt)} by ${order.evidenceFrozenByAdmin || "system"}`,
       C.dangerBg, C.danger, C.danger
     );
+  }
+
+  // ── Evidence Completeness Tier ──
+  {
+    const hasApiVerification = verificationMode === "API_VERIFIED";
+    const hasDelivery = dlCompletedEvents.length > 0;
+    let tier = "C";
+    let tierLabel = "Tier C: Delivery logs only";
+    if (hasApiVerification && hasDelivery) {
+      tier = "A";
+      tierLabel = "Tier A: Payment API-verified + payer identifiers + delivery logs";
+    } else if (isManualSale && hasDelivery) {
+      tier = "B";
+      tierLabel = "Tier B: Manual payment proof + delivery logs";
+    } else if (hasDelivery) {
+      tier = "A";
+      tierLabel = "Tier A: Payment captured via PayPal + delivery logs";
+    }
+    w.badge(`EVIDENCE COMPLETENESS: ${tierLabel}`, tier === "A");
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -469,15 +493,14 @@ export async function generateEvidencePdf(
     let paymentSummary: string;
     if (isManualSale) {
       const method = manualPaymentData?.method ? String(manualPaymentData.method) : "manual";
-      const invoiceId = manualPaymentData?.paypalInvoiceId || order.paypalInvoiceId;
-      const txnId = manualPaymentData?.paypalTransactionId || order.paypalTransactionId;
-      const verified = manualPaymentData?.verifiedViaApi;
-      const ref = manualPaymentData?.paymentRef ? ` (ref: ${String(manualPaymentData.paymentRef)})` : "";
-      let invoiceDetail = "";
-      if (invoiceId) invoiceDetail += ` Invoice ID: ${invoiceId}.`;
-      if (txnId) invoiceDetail += ` Transaction ID: ${txnId}.`;
-      if (verified) invoiceDetail += " Payment was VERIFIED via PayPal API.";
-      paymentSummary = `Payment was recorded via ${method === "paypal_invoice" ? "PayPal Invoice" : "manual payment"}${ref}.${invoiceDetail}`;
+      const methodLabel = method === "paypal_invoice" ? "PayPal Invoice" : "manual payment";
+      if (verificationMode === "API_VERIFIED") {
+        const txnId = manualPaymentData?.paypalTransactionId || order.paypalTransactionId;
+        paymentSummary = `Payment was recorded via ${methodLabel} and VERIFIED via PayPal API.`;
+        if (txnId) paymentSummary += ` Transaction ID: ${txnId}.`;
+      } else {
+        paymentSummary = `Payment was recorded via ${methodLabel} (manual attestation by store administrator).`;
+      }
     } else {
       paymentSummary = `Payment was completed via PayPal (status: ${ppStatus}).`;
     }
@@ -536,20 +559,28 @@ export async function generateEvidencePdf(
   // SECTION 2: IDENTITY VERIFICATION
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   w.sectionTitle("3. IDENTITY VERIFICATION");
-  w.kv("Name at Checkout", order.buyerName || "N/A");
-  w.kv("PayPal Payer Name", order.paypalPayerName || "N/A");
+  if (order.buyerName) w.kv("Name at Checkout", order.buyerName);
   w.kv("Email at Checkout", order.buyerEmail);
-  w.kv("PayPal Payer Email", order.paypalPayerEmail || "N/A");
-  const cName = (order.buyerName || "").trim().toLowerCase();
-  const pName = (order.paypalPayerName || "").trim().toLowerCase();
-  const nameMatch = cName && pName
-    ? cName === pName ? "EXACT MATCH" : (pName.includes(cName) || cName.includes(pName)) ? "PARTIAL MATCH" : "MISMATCH"
-    : "PENDING";
-  w.badge(`NAME MATCH: ${nameMatch}`, nameMatch !== "MISMATCH");
-  w.note(
-    "The buyer entered their full name at checkout before payment. This name can be compared against the PayPal account holder name to verify the transaction was authorized by the account owner.",
-    C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
-  );
+  // Only show payer fields if data exists (from API verification or PayPal capture)
+  if (order.paypalPayerName) w.kv("PayPal Payer Name", order.paypalPayerName);
+  if (order.paypalPayerEmail) w.kv("PayPal Payer Email", order.paypalPayerEmail);
+  if (order.paypalPayerName && order.buyerName) {
+    const cName = order.buyerName.trim().toLowerCase();
+    const pName = order.paypalPayerName.trim().toLowerCase();
+    const nameMatch = cName === pName ? "EXACT MATCH" : (pName.includes(cName) || cName.includes(pName)) ? "PARTIAL MATCH" : "MISMATCH";
+    w.badge(`NAME MATCH: ${nameMatch}`, nameMatch !== "MISMATCH");
+  }
+  if (isManualSale && verificationMode === "MANUAL_ATTESTED") {
+    w.note(
+      "Payment was made to an external account not connected to this store's API. Payer identity is attested by the store administrator.",
+      C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+    );
+  } else if (order.paypalPayerName || order.paypalPayerEmail) {
+    w.note(
+      "Payer identity was obtained from PayPal. The name/email can be compared against the buyer's checkout information to verify the transaction was authorized by the account owner.",
+      C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+    );
+  }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION D: SESSION CORRELATION (PURCHASE vs DOWNLOAD)
@@ -634,38 +665,37 @@ export async function generateEvidencePdf(
     if (ppStatus) w.kv("PayPal Status", String(ppStatus).toUpperCase());
     if (ppPaidAt) w.kv("PayPal Paid At", String(ppPaidAt));
 
-    // Verification status
-    const verified = manualPaymentData?.verifiedViaApi;
-    const verifiedAt = manualPaymentData?.verifiedAt;
-    if (verified) {
-      w.kv("Verification", `Verified via PayPal API at ${verifiedAt || "N/A"}`);
+    // Verification status — mode-aware
+    if (verificationMode === "API_VERIFIED") {
+      const verifiedAt = manualPaymentData?.verifiedAt;
+      w.kv("Verification", `Verified via PayPal Invoicing API${verifiedAt ? " at " + String(verifiedAt) : ""}`);
     } else {
-      w.kv("Verification", "Admin recorded (unverified via API)");
+      w.kv("Verification Method", "Manual attestation by store administrator (external PayPal account)");
     }
 
-    w.kv("Manual Sale ID", manualPaymentData?.manualSaleId ? String(manualPaymentData.manualSaleId) : "N/A");
+    if (manualPaymentData?.manualSaleId) w.kv("Manual Sale ID", String(manualPaymentData.manualSaleId));
     if (paymentRecordedEvent) {
       w.kv("Payment Recorded At", fmtDate(paymentRecordedEvent.createdAt));
-      w.kv("Recorded IP", paymentRecordedEvent.ipAddress || "N/A");
+      if (paymentRecordedEvent.ipAddress) w.kv("Recorded IP", paymentRecordedEvent.ipAddress);
     }
     if (redeemCompletedEvent) {
       w.kv("Redeem Completed At", fmtDate(redeemCompletedEvent.createdAt));
-      w.kv("Redeem IP", redeemCompletedEvent.ipAddress || "N/A");
-      w.kv("Redeem UA", truncate(redeemCompletedEvent.userAgent || "N/A", 80));
+      if (redeemCompletedEvent.ipAddress) w.kv("Redeem IP", redeemCompletedEvent.ipAddress);
+      if (redeemCompletedEvent.userAgent) w.kv("Redeem UA", truncate(redeemCompletedEvent.userAgent, 80));
     }
     w.note(
-      "This order was created via the Manual Sales / Redeem Link flow. Payment was processed outside the standard checkout (e.g. PayPal Invoice). The buyer redeemed a secure link, accepted Terms of Service, and activated the license within the store.",
+      "This order was created via the Manual Sales / Redeem Link flow. The buyer redeemed a secure link, accepted Terms of Service, and activated the license within the store.",
       C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
     );
   } else {
     w.sectionTitle("5. PAYPAL PAYMENT DETAILS (Extract)");
-    w.kv("PayPal Order ID", order.paypalOrderId || "N/A");
-    w.kv("PayPal Capture ID", order.paypalCaptureId || "N/A");
-    w.kv("PayPal Status", order.paypalStatus || "N/A");
+    if (order.paypalOrderId) w.kv("PayPal Order ID", order.paypalOrderId);
+    if (order.paypalCaptureId) w.kv("PayPal Capture ID", order.paypalCaptureId);
+    if (order.paypalStatus) w.kv("PayPal Status", order.paypalStatus);
     w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
-    w.kv("Payer ID", order.paypalPayerId || "N/A");
-    w.kv("Payer Email", order.paypalPayerEmail || "N/A");
-    w.kv("Payer Name", order.paypalPayerName || "N/A");
+    if (order.paypalPayerId) w.kv("Payer ID", order.paypalPayerId);
+    if (order.paypalPayerEmail) w.kv("Payer Email", order.paypalPayerEmail);
+    if (order.paypalPayerName) w.kv("Payer Name", order.paypalPayerName);
 
     // Extract additional fields from rawCapture if available
     const raw = order.paypalRawCapture as Record<string, unknown> | null;
@@ -699,9 +729,12 @@ export async function generateEvidencePdf(
   w.sectionTitle("6. TERMS OF SERVICE ACCEPTANCE");
   w.kv("Terms Version", order.termsVersion.versionLabel);
   w.kv("Content Hash (SHA256)", order.termsVersion.contentHash);
-  w.kv("Accepted At", fmtDate(order.termsAcceptedAt));
-  w.kv("Accepted IP", order.termsAcceptedIp || "N/A");
-  w.kv("Accepted UA", truncate(order.termsAcceptedUa || "N/A", 100));
+  // Use the terms.accepted event timestamp if available for consistency with chain
+  const termsAcceptedEvent = order.events.find((e) => e.eventType === "terms.accepted");
+  const termsTimestamp = termsAcceptedEvent ? fmtDate(termsAcceptedEvent.createdAt) : fmtDate(order.termsAcceptedAt);
+  w.kv("Accepted At", termsTimestamp);
+  if (order.termsAcceptedIp) w.kv("Accepted IP", order.termsAcceptedIp);
+  if (order.termsAcceptedUa) w.kv("Accepted UA", truncate(order.termsAcceptedUa, 100));
   w.note(
     `Terms content (first 400 chars): ${truncate(order.termsVersion.content, 400)}`,
     C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
@@ -717,8 +750,8 @@ export async function generateEvidencePdf(
   );
   w.kv("ToS Version", order.termsVersion.versionLabel);
   w.kv("ToS Hash", order.termsVersion.contentHash);
-  w.kv("Accepted At", fmtDate(order.termsAcceptedAt));
-  w.kv("Accepted IP", order.termsAcceptedIp || "N/A");
+  w.kv("Accepted At", termsTimestamp);
+  if (order.termsAcceptedIp) w.kv("Accepted IP", order.termsAcceptedIp);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION 5: LICENSE INFORMATION
@@ -846,13 +879,23 @@ export async function generateEvidencePdf(
   // SECTION C: PROOF OF ACCESS (Web Activity)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   w.sectionTitle("12. PROOF OF ACCESS (Web Activity)");
-  if (webActivityEvents.length > 0) {
-    for (const ev of webActivityEvents) {
+  // Combine web activity + redeem interaction events
+  const accessEvents = [...webActivityEvents, ...redeemEvents]
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  if (accessEvents.length > 0) {
+    for (const ev of accessEvents) {
       w.ensureSpace(18);
       w.text(`[${fmtDate(ev.createdAt)}] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: C.accent });
       w.y -= 9;
-      w.text(`IP: ${ev.ipAddress || "N/A"} | UA: ${truncate(ev.userAgent || "N/A", 70)}`, 6, 6, { color: C.textSec });
-      w.y -= 10;
+      const ipPart = ev.ipAddress ? `IP: ${ev.ipAddress}` : "";
+      const uaPart = ev.userAgent ? `UA: ${truncate(ev.userAgent, 70)}` : "";
+      const detail = [ipPart, uaPart].filter(Boolean).join(" | ");
+      if (detail) {
+        w.text(detail, 6, 6, { color: C.textSec });
+        w.y -= 10;
+      } else {
+        w.y -= 4;
+      }
     }
   } else {
     w.text("No web activity events recorded yet.", 0, 8, { color: C.textMut });
@@ -862,58 +905,46 @@ export async function generateEvidencePdf(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION E: EMAIL DELIVERY LOG
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  w.sectionTitle("13. EMAIL DELIVERY LOG");
-  const deliveryCompletedForEmail = dlCompletedEvents.length > 0;
-  if (emailEvents.length > 0) {
-    for (const ev of emailEvents) {
-      const d = ev.eventData as Record<string, unknown>;
-      w.ensureSpace(28);
+  // Only show email section if there are real email events (not just skipped)
+  if (!emailSkippedOnly) {
+    w.sectionTitle("13. EMAIL DELIVERY LOG");
+    const deliveryCompletedForEmail = dlCompletedEvents.length > 0;
+    if (emailSentEvents.length > 0) {
+      for (const ev of emailSentEvents) {
+        const d = ev.eventData as Record<string, unknown>;
+        w.ensureSpace(28);
 
-      if (ev.eventType === "email.skipped") {
-        // SKIPPED — not configured or disabled
-        const reason = safeStr(d.reason);
-        w.text(`[SKIPPED] email.skipped`, 0, 7, { font: w.fontBold, color: C.textMut });
-        w.y -= 9;
-        w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Reason: ${reason}`, 6, 6, { color: C.textSec });
-        w.y -= 9;
-        if (deliveryCompletedForEmail) {
-          w.text("Non-critical: digital delivery completed via direct download.", 6, 6, { color: C.success });
-        } else {
-          w.text("Note: email not sent and delivery not yet completed.", 6, 6, { color: C.warning });
-        }
-        w.y -= 9;
-      } else if (ev.eventType === "email.failed") {
-        // FAILED — real send attempt failed
-        w.text(`[FAILED] email.failed`, 0, 7, { font: w.fontBold, color: C.danger });
-        w.y -= 9;
-        w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
-        w.y -= 9;
-        if (d.error) {
-          w.text(`Error: ${truncate(safeStr(d.error), 80)}`, 6, 6, { color: C.danger });
+        if (ev.eventType === "email.failed") {
+          w.text(`[FAILED] email.failed`, 0, 7, { font: w.fontBold, color: C.danger });
           w.y -= 9;
-        }
-        if (deliveryCompletedForEmail) {
-          w.text("Non-critical: delivery completed via direct download despite email failure.", 6, 6, { color: C.success });
-        } else {
-          w.text("CRITICAL: email failed and delivery not yet completed.", 6, 6, { font: w.fontBold, color: C.danger });
-        }
-        w.y -= 9;
-      } else {
-        // SENT — success
-        w.text(`[SENT] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: C.success });
-        w.y -= 9;
-        w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
-        w.y -= 9;
-        if (d.messageId) {
-          w.text(`Message-ID: ${safeStr(d.messageId)}`, 6, 6, { font: w.fontMono, color: C.textMut });
+          w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
           w.y -= 9;
+          if (d.error) {
+            w.text(`Error: ${truncate(safeStr(d.error), 80)}`, 6, 6, { color: C.danger });
+            w.y -= 9;
+          }
+          if (deliveryCompletedForEmail) {
+            w.text("Non-critical: delivery completed via direct download despite email failure.", 6, 6, { color: C.success });
+          } else {
+            w.text("CRITICAL: email failed and delivery not yet completed.", 6, 6, { font: w.fontBold, color: C.danger });
+          }
+          w.y -= 9;
+        } else {
+          w.text(`[SENT] ${ev.eventType}`, 0, 7, { font: w.fontBold, color: C.success });
+          w.y -= 9;
+          w.text(`Time: ${fmtDate(ev.createdAt)} | To: ${safeStr(d.to)} | Provider: ${safeStr(d.provider || d.smtpHost)}`, 6, 6, { color: C.textSec });
+          w.y -= 9;
+          if (d.messageId) {
+            w.text(`Message-ID: ${safeStr(d.messageId)}`, 6, 6, { font: w.fontMono, color: C.textMut });
+            w.y -= 9;
+          }
         }
+        w.y -= 3;
       }
-      w.y -= 3;
+    } else {
+      w.text("No email events recorded.", 0, 8, { color: C.textMut });
+      w.y -= 12;
     }
-  } else {
-    w.text("No email events recorded.", 0, 8, { color: C.textMut });
-    w.y -= 12;
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -991,8 +1022,10 @@ export async function generateEvidencePdf(
     w.kv("Broken at Seq", `#${chain.brokenAtSequence}`);
   }
 
+  // Filter out email.skipped from the chain display (noise reduction)
+  const chainEvents = order.events.filter((e) => e.eventType !== "email.skipped");
   w.sectionTitle("COMPLETE EVENT CHAIN");
-  for (const ev of order.events) {
+  for (const ev of chainEvents) {
     w.chainEvent(
       ev.sequenceNumber,
       ev.eventType,

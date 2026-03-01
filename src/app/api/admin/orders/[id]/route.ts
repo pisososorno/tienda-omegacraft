@@ -75,6 +75,7 @@ export async function GET(
       paypalInvoiceId: order.paypalInvoiceId,
       paypalInvoiceNumber: order.paypalInvoiceNumber,
       paypalTransactionId: order.paypalTransactionId,
+      paymentVerificationMode: order.paymentVerificationMode,
       downloadCount: order.downloadCount,
       downloadLimit: order.downloadLimit,
       downloadsExpireAt: order.downloadsExpireAt?.toISOString() || null,

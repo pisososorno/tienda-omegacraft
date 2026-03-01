@@ -97,6 +97,9 @@ export default function ManualSalesPage() {
     amountTax: "",
     amountDiscount: "",
     amountShipping: "",
+    // Verification mode
+    paymentVerificationMode: "API_VERIFIED" as "API_VERIFIED" | "MANUAL_ATTESTED",
+    paymentProofNote: "",
   });
   const [showInvoiceDetails, setShowInvoiceDetails] = useState(false);
 
@@ -157,6 +160,8 @@ export default function ManualSalesPage() {
           amountTax: form.amountTax || null,
           amountDiscount: form.amountDiscount || null,
           amountShipping: form.amountShipping || null,
+          paymentVerificationMode: form.paymentVerificationMode,
+          paymentProofNote: form.paymentProofNote || null,
         }),
       });
       const data = await res.json();
@@ -196,7 +201,9 @@ export default function ManualSalesPage() {
         return;
       }
       const amountWarn = data.amountMismatch ? `\n⚠️ AMOUNT MISMATCH: Sale=$${data.saleAmount}, PayPal=$${data.amountPaid || data.amountDue}` : "";
-      alert(`✅ Invoice Verified!\nID: ${data.invoiceId}\nStatus: ${data.status}\nPaid: ${data.paid ? "YES" : "NO"}\nAmount Due: $${data.amountDue || "N/A"}\nAmount Paid: $${data.amountPaid || "N/A"}${amountWarn}`);
+      const payerInfo = data.payerEmail ? `\nPayer: ${data.payerName || ""} <${data.payerEmail}>` : "";
+      const txnInfo = data.transactionId ? `\nTransaction: ${data.transactionId}` : "";
+      alert(`✅ Invoice Verified!\nID: ${data.invoiceId}\nStatus: ${data.status}\nPaid: ${data.paid ? "YES" : "NO"}\nAmount Paid: $${data.amountPaid || "N/A"}${payerInfo}${txnInfo}${amountWarn}`);
       fetchSales();
     } catch {
       alert("Verification failed");
@@ -383,6 +390,50 @@ export default function ManualSalesPage() {
                       onChange={(e) => setForm((f) => ({ ...f, redeemExpiresDays: e.target.value }))}
                     />
                   </div>
+                </div>
+
+                {/* Payment Destination Selector */}
+                <div className="border rounded-lg p-4 space-y-3">
+                  <label className="text-sm font-medium block">Destino del pago</label>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded-md border hover:bg-slate-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="verificationMode"
+                        checked={form.paymentVerificationMode === "API_VERIFIED"}
+                        onChange={() => setForm((f) => ({ ...f, paymentVerificationMode: "API_VERIFIED" as const }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="text-sm font-medium">Cuenta PayPal conectada a la tienda</span>
+                        <p className="text-xs text-muted-foreground">Verificable por API. El sistema puede confirmar pago, payer ID, y transaccion automaticamente.</p>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 cursor-pointer p-2 rounded-md border hover:bg-slate-50 transition-colors">
+                      <input
+                        type="radio"
+                        name="verificationMode"
+                        checked={form.paymentVerificationMode === "MANUAL_ATTESTED"}
+                        onChange={() => setForm((f) => ({ ...f, paymentVerificationMode: "MANUAL_ATTESTED" as const }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <span className="text-sm font-medium">Otra cuenta PayPal externa</span>
+                        <p className="text-xs text-muted-foreground">No verificable por API. Se registra como prueba manual. Puedes adjuntar evidencia despues.</p>
+                      </div>
+                    </label>
+                  </div>
+                  {form.paymentVerificationMode === "MANUAL_ATTESTED" && (
+                    <div>
+                      <label className="text-xs font-medium mb-1 block text-muted-foreground">Nota de prueba de pago (opcional)</label>
+                      <Input
+                        value={form.paymentProofNote}
+                        onChange={(e) => setForm((f) => ({ ...f, paymentProofNote: e.target.value }))}
+                        placeholder="Ej: Pago confirmado en cuenta personal, captura adjunta en orden"
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Invoice Details (collapsible) */}

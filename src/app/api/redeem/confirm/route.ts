@@ -103,6 +103,9 @@ export async function POST(req: NextRequest) {
         paypalInvoiceId: sale.paypalInvoiceId || null,
         paypalInvoiceNumber: sale.paypalInvoiceNumber || null,
         paypalTransactionId: sale.paypalTransactionId || null,
+        paymentVerificationMode: sale.paymentVerificationMode || null,
+        paypalPayerEmail: sale.paypalPayerEmail || null,
+        paypalPayerName: sale.paypalPayerName || null,
       },
     });
 

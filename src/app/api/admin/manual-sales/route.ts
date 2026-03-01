@@ -78,6 +78,10 @@ export async function GET(req: NextRequest) {
         paypalPaidAt: s.paypalPaidAt?.toISOString() || null,
         verifiedViaApi: s.verifiedViaApi,
         verifiedAt: s.verifiedAt?.toISOString() || null,
+        paymentVerificationMode: s.paymentVerificationMode,
+        paymentProofNote: s.paymentProofNote,
+        paypalPayerEmail: s.paypalPayerEmail,
+        paypalPayerName: s.paypalPayerName,
       }))
     );
   } catch (error) {
@@ -113,6 +117,9 @@ export async function POST(req: NextRequest) {
       amountTax,
       amountDiscount,
       amountShipping,
+      // Verification mode
+      paymentVerificationMode,
+      paymentProofNote,
     } = body;
 
     if (!buyerEmail || !productId) {
@@ -160,6 +167,8 @@ export async function POST(req: NextRequest) {
         amountTax: amountTax ? parseFloat(amountTax) : null,
         amountDiscount: amountDiscount ? parseFloat(amountDiscount) : null,
         amountShipping: amountShipping ? parseFloat(amountShipping) : null,
+        paymentVerificationMode: paymentVerificationMode || null,
+        paymentProofNote: paymentProofNote || null,
       },
     });
 

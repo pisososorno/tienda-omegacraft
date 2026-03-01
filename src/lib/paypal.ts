@@ -259,11 +259,27 @@ export async function isPayPalConfigured(): Promise<boolean> {
 // ── Invoice Status Check (Invoicing API v2) ──────────
 export interface InvoiceStatusResult {
   invoiceId: string;
+  invoiceNumber: string | null;
   status: string; // PAID, SENT, DRAFT, CANCELLED, etc.
   paid: boolean;
-  amountDue?: string;
-  amountPaid?: string;
-  currency?: string;
+  // Amounts
+  amountDue: string | null;
+  amountPaid: string | null;
+  currency: string | null;
+  // Breakdown
+  subtotal: string | null;
+  tax: string | null;
+  discount: string | null;
+  shipping: string | null;
+  // Payer info (from billing_info or transaction)
+  payerEmail: string | null;
+  payerName: string | null;
+  // Transaction details
+  transactionId: string | null;
+  paymentDate: string | null;
+  paymentMethod: string | null; // PAYPAL, BANK_TRANSFER, etc.
+  // Raw response for audit
+  raw: Record<string, unknown>;
 }
 
 /**
@@ -285,7 +301,8 @@ export function extractInvoiceId(paymentRef: string): string | null {
 }
 
 /**
- * Query PayPal Invoicing API to get invoice status.
+ * Query PayPal Invoicing API to get full invoice details.
+ * Extracts payer info, transaction ID, amount breakdown, and raw response.
  * Returns null if invoice not found or API error.
  */
 export async function getInvoiceStatus(invoiceId: string): Promise<InvoiceStatusResult | null> {
@@ -310,13 +327,40 @@ export async function getInvoiceStatus(invoiceId: string): Promise<InvoiceStatus
     const status = data.status || "UNKNOWN";
     const paid = status === "PAID" || status === "MARKED_AS_PAID";
 
+    // Extract payer info from billing_info
+    const billingInfo = data.detail?.billing_info?.[0];
+    const payerEmail = billingInfo?.email_address || null;
+    const givenName = billingInfo?.name?.given_name || "";
+    const surname = billingInfo?.name?.surname || "";
+    const payerName = [givenName, surname].filter(Boolean).join(" ") || null;
+
+    // Extract transaction details from payments
+    const firstTxn = data.payments?.transactions?.[0];
+    const transactionId = firstTxn?.payment_id || null;
+    const paymentDate = firstTxn?.payment_date || null;
+    const paymentMethod = firstTxn?.method || null;
+
+    // Amount breakdown
+    const breakdown = data.amount?.breakdown;
+
     return {
       invoiceId,
+      invoiceNumber: data.detail?.invoice_number || null,
       status,
       paid,
-      amountDue: data.amount?.value,
-      amountPaid: data.payments?.transactions?.[0]?.amount?.value,
-      currency: data.amount?.currency_code,
+      amountDue: data.amount?.value || null,
+      amountPaid: data.payments?.paid_amount?.value || firstTxn?.amount?.value || null,
+      currency: data.amount?.currency_code || null,
+      subtotal: breakdown?.item_total?.value || null,
+      tax: breakdown?.tax_total?.value || null,
+      discount: breakdown?.discount?.invoice_discount?.value || breakdown?.discount?.value || null,
+      shipping: breakdown?.shipping?.amount?.value || breakdown?.shipping?.value || null,
+      payerEmail,
+      payerName,
+      transactionId,
+      paymentDate,
+      paymentMethod,
+      raw: data,
     };
   } catch (err) {
     console.error("[paypal] getInvoiceStatus error:", err);

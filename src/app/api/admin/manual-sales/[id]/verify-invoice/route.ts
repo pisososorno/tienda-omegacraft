@@ -65,17 +65,28 @@ export async function POST(
       amountMismatch = true;
     }
 
-    // Update ManualSale with verified data
+    // Update ManualSale with all verified data from API
     const now = new Date();
+    const paidAt = result.paymentDate ? new Date(result.paymentDate) : (result.paid ? now : undefined);
+
     await prisma.manualSale.update({
       where: { id },
       data: {
         paypalInvoiceId: invoiceId,
+        paypalInvoiceNumber: result.invoiceNumber || undefined,
+        paypalTransactionId: result.transactionId || undefined,
         paypalStatus: result.status,
+        paypalPaidAt: paidAt,
+        paypalPayerEmail: result.payerEmail || undefined,
+        paypalPayerName: result.payerName || undefined,
+        amountSubtotal: result.subtotal ? parseFloat(result.subtotal) : undefined,
+        amountTax: result.tax ? parseFloat(result.tax) : undefined,
+        amountDiscount: result.discount ? parseFloat(result.discount) : undefined,
+        amountShipping: result.shipping ? parseFloat(result.shipping) : undefined,
         verifiedViaApi: true,
         verifiedAt: now,
-        paypalRaw: result as unknown as Prisma.InputJsonValue,
-        ...(result.paid && !sale.verifiedViaApi ? { paidAt: now } : {}),
+        paymentVerificationMode: "API_VERIFIED",
+        paypalRaw: result.raw as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -89,8 +100,12 @@ export async function POST(
         where: { id: saleWithOrder.orderId },
         data: {
           paypalInvoiceId: invoiceId,
-          paypalTransactionId: sale.paypalInvoiceId !== invoiceId ? invoiceId : undefined,
+          paypalInvoiceNumber: result.invoiceNumber || undefined,
+          paypalTransactionId: result.transactionId || undefined,
+          paypalPayerEmail: result.payerEmail || undefined,
+          paypalPayerName: result.payerName || undefined,
           paypalStatus: result.status,
+          paymentVerificationMode: "API_VERIFIED",
         },
       });
     }
@@ -98,6 +113,8 @@ export async function POST(
     await logAudit(req, auth.userId, "manual_sale.invoice_verified", {
       manualSaleId: id,
       invoiceId,
+      transactionId: result.transactionId,
+      payerEmail: result.payerEmail,
       status: result.status,
       paid: result.paid,
       amountMismatch,
@@ -105,11 +122,16 @@ export async function POST(
 
     return jsonOk({
       invoiceId,
+      invoiceNumber: result.invoiceNumber || null,
+      transactionId: result.transactionId || null,
+      payerEmail: result.payerEmail || null,
+      payerName: result.payerName || null,
       status: result.status,
       paid: result.paid,
       amountDue: result.amountDue || null,
       amountPaid: result.amountPaid || null,
       currency: result.currency || null,
+      paymentDate: result.paymentDate || null,
       amountMismatch,
       saleAmount: saleAmount.toFixed(2),
       verifiedAt: now.toISOString(),
