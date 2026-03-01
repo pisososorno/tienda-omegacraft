@@ -18,6 +18,7 @@ import {
   FileText,
   Store,
   User,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SessionProvider } from "next-auth/react";
@@ -89,6 +90,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
           {/* Orders: todos ven, pero SELLER ve "Mis Órdenes" */}
           {navItem("/admin/orders", isSeller ? "Mis Órdenes" : "Orders", <ShoppingCart className="h-4 w-4" />, "/admin/orders")}
+
+          {/* Manual Sales: SUPER_ADMIN y STORE_ADMIN */}
+          {(isSuperAdmin || isStoreAdmin) && navItem("/admin/manual-sales", "Manual Sales", <Receipt className="h-4 w-4" />, "/admin/manual-sales")}
 
           {/* Sellers: solo SUPER_ADMIN */}
           {isSuperAdmin && navItem("/admin/sellers", "Sellers", <Store className="h-4 w-4" />, "/admin/sellers")}

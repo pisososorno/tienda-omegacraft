@@ -117,6 +117,43 @@ export async function getSettings(): Promise<SiteSettingsData> {
   return DEFAULT_SETTINGS;
 }
 
+// ── PayPal mode cache (separate, short TTL) ─────────────
+let cachedPaypalMode: string | null = null;
+let paypalModeCacheExpiry = 0;
+const PAYPAL_MODE_CACHE_TTL_MS = 30_000; // 30s
+
+export function invalidatePaypalModeCache() {
+  cachedPaypalMode = null;
+  paypalModeCacheExpiry = 0;
+}
+
+/**
+ * Get the active PayPal mode ("sandbox" | "live") from DB.
+ * Falls back to PAYPAL_MODE env var, then "sandbox".
+ */
+export async function getPaypalMode(): Promise<"sandbox" | "live"> {
+  const now = Date.now();
+  if (cachedPaypalMode && now < paypalModeCacheExpiry) {
+    return cachedPaypalMode as "sandbox" | "live";
+  }
+
+  try {
+    const row = await prisma.siteSettings.findUnique({
+      where: { id: "default" },
+      select: { paypalMode: true },
+    });
+    const mode = row?.paypalMode === "live" ? "live" : "sandbox";
+    cachedPaypalMode = mode;
+    paypalModeCacheExpiry = now + PAYPAL_MODE_CACHE_TTL_MS;
+    return mode;
+  } catch {
+    const fallback = process.env.PAYPAL_MODE === "live" ? "live" : "sandbox";
+    cachedPaypalMode = fallback;
+    paypalModeCacheExpiry = now + PAYPAL_MODE_CACHE_TTL_MS;
+    return fallback;
+  }
+}
+
 /**
  * Replace store name, contact emails and placeholders in legal/terms content.
  * Handles both hardcoded defaults and {{PLACEHOLDER}} tokens.

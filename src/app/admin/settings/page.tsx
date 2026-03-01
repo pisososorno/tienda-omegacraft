@@ -104,7 +104,11 @@ export default function AdminSettingsPage() {
     secretConfigured: boolean;
     webhookIdConfigured: boolean;
     mode: string;
+    sandbox?: { clientIdConfigured: boolean; secretConfigured: boolean; webhookIdConfigured: boolean };
+    live?: { clientIdConfigured: boolean; secretConfigured: boolean; webhookIdConfigured: boolean };
   } | null>(null);
+  const [togglingMode, setTogglingMode] = useState(false);
+  const [modeError, setModeError] = useState("");
 
   const [appearance, setAppearance] = useState<AppearanceForm>(DEFAULT_APPEARANCE);
 
@@ -753,56 +757,131 @@ export default function AdminSettingsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Estado actual desde el servidor */}
               {paypalStatus ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  {/* Mode toggle */}
+                  <div className={`p-4 rounded-lg border-2 ${paypalStatus.mode === "live" ? "border-green-400 bg-green-50" : "border-amber-400 bg-amber-50"}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-block w-3 h-3 rounded-full ${paypalStatus.mode === "live" ? "bg-green-500" : "bg-amber-500"}`} />
+                          <span className="font-bold text-sm">
+                            {paypalStatus.mode === "live" ? "MODO PRODUCCION (LIVE)" : "MODO SANDBOX (PRUEBAS)"}
+                          </span>
+                        </div>
+                        <p className={`text-xs mt-1 ${paypalStatus.mode === "live" ? "text-green-700" : "text-amber-700"}`}>
+                          {paypalStatus.mode === "live"
+                            ? "Los pagos son REALES. El dinero va a tu cuenta PayPal."
+                            : "Los pagos son de prueba. No se cobra dinero real."}
+                        </p>
+                      </div>
+                      <Button
+                        variant={paypalStatus.mode === "live" ? "outline" : "default"}
+                        size="sm"
+                        disabled={togglingMode}
+                        className={`gap-2 ${paypalStatus.mode === "sandbox" ? "bg-green-600 hover:bg-green-700 text-white" : "border-amber-400 text-amber-800 hover:bg-amber-100"}`}
+                        onClick={async () => {
+                          const targetMode = paypalStatus.mode === "live" ? "sandbox" : "live";
+                          const msg = targetMode === "live"
+                            ? "CAMBIAR A PRODUCCION (LIVE)?\n\nLos pagos seran REALES.\nAsegurate de tener las credenciales LIVE configuradas."
+                            : "Cambiar a SANDBOX (pruebas)?\n\nLos pagos seran de prueba.";
+                          if (!confirm(msg)) return;
+                          setTogglingMode(true);
+                          setModeError("");
+                          try {
+                            const res = await fetch("/api/admin/settings", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "toggle_paypal_mode", mode: targetMode }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.error || "Error");
+                            await loadSettings();
+                          } catch (err: unknown) {
+                            setModeError(err instanceof Error ? err.message : "Error al cambiar modo");
+                          } finally {
+                            setTogglingMode(false);
+                          }
+                        }}
+                      >
+                        {togglingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        {paypalStatus.mode === "live" ? "Cambiar a Sandbox" : "Cambiar a Live"}
+                      </Button>
+                    </div>
+                    {modeError && (
+                      <div className="mt-2 bg-red-100 border border-red-300 rounded p-2 text-xs text-red-800">{modeError}</div>
+                    )}
+                  </div>
+
+                  {/* Active mode credentials */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className={`p-3 rounded-lg border text-center ${paypalStatus.clientIdConfigured ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                      <div className={`text-xs font-medium ${paypalStatus.clientIdConfigured ? "text-emerald-700" : "text-red-700"}`}>
-                        Client ID
-                      </div>
+                      <div className={`text-xs font-medium ${paypalStatus.clientIdConfigured ? "text-emerald-700" : "text-red-700"}`}>Client ID</div>
                       <div className={`text-sm font-bold mt-1 ${paypalStatus.clientIdConfigured ? "text-emerald-800" : "text-red-800"}`}>
-                        {paypalStatus.clientIdConfigured ? "✓ Configurado" : "✗ No configurado"}
+                        {paypalStatus.clientIdConfigured ? "Configurado" : "No configurado"}
                       </div>
                       {paypalStatus.clientIdMasked && (
                         <div className="text-[10px] font-mono text-muted-foreground mt-1">{paypalStatus.clientIdMasked}</div>
                       )}
                     </div>
                     <div className={`p-3 rounded-lg border text-center ${paypalStatus.secretConfigured ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                      <div className={`text-xs font-medium ${paypalStatus.secretConfigured ? "text-emerald-700" : "text-red-700"}`}>
-                        Client Secret
-                      </div>
+                      <div className={`text-xs font-medium ${paypalStatus.secretConfigured ? "text-emerald-700" : "text-red-700"}`}>Client Secret</div>
                       <div className={`text-sm font-bold mt-1 ${paypalStatus.secretConfigured ? "text-emerald-800" : "text-red-800"}`}>
-                        {paypalStatus.secretConfigured ? "✓ Configurado" : "✗ No configurado"}
+                        {paypalStatus.secretConfigured ? "Configurado" : "No configurado"}
                       </div>
                     </div>
                     <div className={`p-3 rounded-lg border text-center ${paypalStatus.webhookIdConfigured ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
-                      <div className={`text-xs font-medium ${paypalStatus.webhookIdConfigured ? "text-emerald-700" : "text-amber-700"}`}>
-                        Webhook ID
-                      </div>
+                      <div className={`text-xs font-medium ${paypalStatus.webhookIdConfigured ? "text-emerald-700" : "text-amber-700"}`}>Webhook ID</div>
                       <div className={`text-sm font-bold mt-1 ${paypalStatus.webhookIdConfigured ? "text-emerald-800" : "text-amber-800"}`}>
-                        {paypalStatus.webhookIdConfigured ? "✓ Configurado" : "○ Opcional"}
+                        {paypalStatus.webhookIdConfigured ? "Configurado" : "Opcional"}
                       </div>
                     </div>
-                    <div className={`p-3 rounded-lg border text-center ${paypalStatus.mode === "live" ? "bg-blue-50 border-blue-200" : "bg-amber-50 border-amber-200"}`}>
-                      <div className="text-xs font-medium text-gray-600">Modo</div>
-                      <div className={`text-sm font-bold mt-1 ${paypalStatus.mode === "live" ? "text-blue-800" : "text-amber-800"}`}>
-                        {paypalStatus.mode === "live" ? "🟢 Producción" : "🟡 Sandbox"}
+                    <div className="p-3 rounded-lg border text-center bg-slate-50 border-slate-200">
+                      <div className="text-xs font-medium text-slate-600">API URL</div>
+                      <div className="text-[10px] font-mono mt-1 text-slate-700">
+                        {paypalStatus.mode === "live" ? "api-m.paypal.com" : "api-m.sandbox.paypal.com"}
                       </div>
                     </div>
                   </div>
 
+                  {/* Sandbox vs Live credential comparison */}
+                  {paypalStatus.sandbox && paypalStatus.live && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className={`p-3 rounded-lg border ${paypalStatus.mode === "sandbox" ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200"}`}>
+                        <div className="text-xs font-bold mb-2 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                          Sandbox
+                          {paypalStatus.mode === "sandbox" && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded ml-1">ACTIVO</span>}
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between"><span className="text-muted-foreground">Client ID</span><span className={paypalStatus.sandbox.clientIdConfigured ? "text-emerald-600" : "text-red-500"}>{paypalStatus.sandbox.clientIdConfigured ? "OK" : "Falta"}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Secret</span><span className={paypalStatus.sandbox.secretConfigured ? "text-emerald-600" : "text-red-500"}>{paypalStatus.sandbox.secretConfigured ? "OK" : "Falta"}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Webhook</span><span className={paypalStatus.sandbox.webhookIdConfigured ? "text-emerald-600" : "text-slate-400"}>{paypalStatus.sandbox.webhookIdConfigured ? "OK" : "N/A"}</span></div>
+                        </div>
+                      </div>
+                      <div className={`p-3 rounded-lg border ${paypalStatus.mode === "live" ? "border-green-300 ring-2 ring-green-200" : "border-slate-200"}`}>
+                        <div className="text-xs font-bold mb-2 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-green-500" />
+                          Live
+                          {paypalStatus.mode === "live" && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-1">ACTIVO</span>}
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between"><span className="text-muted-foreground">Client ID</span><span className={paypalStatus.live.clientIdConfigured ? "text-emerald-600" : "text-red-500"}>{paypalStatus.live.clientIdConfigured ? "OK" : "Falta"}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Secret</span><span className={paypalStatus.live.secretConfigured ? "text-emerald-600" : "text-red-500"}>{paypalStatus.live.secretConfigured ? "OK" : "Falta"}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">Webhook</span><span className={paypalStatus.live.webhookIdConfigured ? "text-emerald-600" : "text-slate-400"}>{paypalStatus.live.webhookIdConfigured ? "OK" : "N/A"}</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {!paypalStatus.clientIdConfigured || !paypalStatus.secretConfigured ? (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
-                      <p className="font-medium">⚠ PayPal no está completamente configurado</p>
-                      <p className="mt-1 text-red-700">Los pagos no funcionarán hasta que configures las credenciales en <code className="bg-red-100 px-1 rounded">.env.production</code> en el servidor.</p>
+                      <p className="font-medium">PayPal no esta configurado para el modo {paypalStatus.mode.toUpperCase()}</p>
+                      <p className="mt-1 text-red-700">Configura las credenciales en <code className="bg-red-100 px-1 rounded">.env.production</code> en el servidor.</p>
                     </div>
                   ) : (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-sm text-emerald-800">
-                      <p className="font-medium">✓ PayPal está configurado y listo para recibir pagos</p>
-                      <p className="mt-1 text-emerald-700">
-                        Cuando un cliente paga, el dinero va <strong>directo a tu cuenta PayPal</strong>.
-                      </p>
+                      <p className="font-medium">PayPal esta configurado y listo ({paypalStatus.mode === "live" ? "Produccion" : "Sandbox"})</p>
                     </div>
                   )}
                 </div>
@@ -820,19 +899,28 @@ export default function AdminSettingsPage() {
                     </a>
                   </li>
                   <li>Crear una app en &quot;Apps & Credentials&quot;</li>
-                  <li>Copiar el <strong>Client ID</strong> y el <strong>Secret</strong></li>
+                  <li>Copiar el <strong>Client ID</strong> y el <strong>Secret</strong> (para Sandbox Y para Live)</li>
                   <li>Agregar las variables en <code className="bg-blue-100 px-1 rounded">.env.production</code> en el servidor</li>
                   <li>Reiniciar el contenedor: <code className="bg-blue-100 px-1 rounded">bash scripts/update.sh</code></li>
-                  <li>Para producción: cambiar <code className="bg-blue-100 px-1 rounded">PAYPAL_MODE</code> a <code className="bg-blue-100 px-1 rounded">live</code></li>
+                  <li>Usar el boton de arriba para cambiar entre Sandbox y Live</li>
                 </ol>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
-                <p className="font-medium text-amber-800">Variables requeridas en <code>.env.production</code>:</p>
-                <pre className="mt-2 bg-amber-100/50 p-3 rounded text-xs font-mono text-amber-900 overflow-x-auto">{`PAYPAL_CLIENT_ID=tu_client_id_aqui
-PAYPAL_CLIENT_SECRET=tu_secret_aqui
-PAYPAL_WEBHOOK_ID=tu_webhook_id_aqui
-PAYPAL_MODE=sandbox`}</pre>
+                <p className="font-medium text-amber-800">Variables en <code>.env.production</code>:</p>
+                <pre className="mt-2 bg-amber-100/50 p-3 rounded text-xs font-mono text-amber-900 overflow-x-auto">{`# Sandbox (pruebas)
+PAYPAL_SANDBOX_CLIENT_ID=tu_sandbox_client_id
+PAYPAL_SANDBOX_CLIENT_SECRET=tu_sandbox_secret
+PAYPAL_SANDBOX_WEBHOOK_ID=tu_sandbox_webhook_id
+
+# Live (produccion)
+PAYPAL_LIVE_CLIENT_ID=tu_live_client_id
+PAYPAL_LIVE_CLIENT_SECRET=tu_live_secret
+PAYPAL_LIVE_WEBHOOK_ID=tu_live_webhook_id
+
+# Legacy (si solo tienes un set de credenciales)
+# PAYPAL_CLIENT_ID=fallback_client_id
+# PAYPAL_CLIENT_SECRET=fallback_secret`}</pre>
               </div>
             </CardContent>
           </Card>

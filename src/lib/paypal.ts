@@ -1,14 +1,43 @@
 import { sha256 } from "./hashing";
+import { getPaypalMode } from "./settings";
 
 // ── Config ───────────────────────────────────────────
-function getConfig() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  const webhookId = process.env.PAYPAL_WEBHOOK_ID;
-  const mode = process.env.PAYPAL_MODE || "sandbox";
+interface PayPalConfig {
+  clientId: string;
+  clientSecret: string;
+  webhookId: string | undefined;
+  baseUrl: string;
+  mode: "sandbox" | "live";
+}
+
+async function getConfig(): Promise<PayPalConfig> {
+  const mode = await getPaypalMode();
+
+  // Dual credentials: try mode-specific env vars first, fallback to legacy single vars
+  const clientId =
+    (mode === "live"
+      ? process.env.PAYPAL_LIVE_CLIENT_ID
+      : process.env.PAYPAL_SANDBOX_CLIENT_ID) ||
+    process.env.PAYPAL_CLIENT_ID;
+
+  const clientSecret =
+    (mode === "live"
+      ? process.env.PAYPAL_LIVE_CLIENT_SECRET
+      : process.env.PAYPAL_SANDBOX_CLIENT_SECRET) ||
+    process.env.PAYPAL_CLIENT_SECRET;
+
+  const webhookId =
+    (mode === "live"
+      ? process.env.PAYPAL_LIVE_WEBHOOK_ID
+      : process.env.PAYPAL_SANDBOX_WEBHOOK_ID) ||
+    process.env.PAYPAL_WEBHOOK_ID;
 
   if (!clientId || !clientSecret) {
-    throw new Error("PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are required");
+    throw new Error(
+      `PayPal ${mode.toUpperCase()} credentials not configured. ` +
+      `Set PAYPAL_${mode.toUpperCase()}_CLIENT_ID and PAYPAL_${mode.toUpperCase()}_CLIENT_SECRET ` +
+      `(or legacy PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET).`
+    );
   }
 
   const baseUrl =
@@ -16,21 +45,32 @@ function getConfig() {
       ? "https://api-m.paypal.com"
       : "https://api-m.sandbox.paypal.com";
 
-  return { clientId, clientSecret, webhookId, baseUrl };
+  return { clientId, clientSecret, webhookId, baseUrl, mode };
 }
 
-// ── Access Token ─────────────────────────────────────
-let cachedToken: { token: string; expiresAt: number } | null = null;
+// ── Access Token (per-mode cache) ────────────────────
+const tokenCache: Record<string, { token: string; expiresAt: number }> = {};
+
+/**
+ * Invalidate cached PayPal access tokens (call when switching modes).
+ */
+export function invalidatePayPalTokenCache() {
+  for (const key of Object.keys(tokenCache)) {
+    delete tokenCache[key];
+  }
+}
 
 async function getAccessToken(): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
-    return cachedToken.token;
+  const config = await getConfig();
+  const cacheKey = config.mode;
+
+  if (tokenCache[cacheKey] && tokenCache[cacheKey].expiresAt > Date.now() + 30_000) {
+    return tokenCache[cacheKey].token;
   }
 
-  const { clientId, clientSecret, baseUrl } = getConfig();
-  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const auth = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
 
-  const res = await fetch(`${baseUrl}/v1/oauth2/token`, {
+  const res = await fetch(`${config.baseUrl}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${auth}`,
@@ -40,16 +80,16 @@ async function getAccessToken(): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`PayPal auth failed: ${res.status} ${await res.text()}`);
+    throw new Error(`PayPal auth failed (${config.mode}): ${res.status} ${await res.text()}`);
   }
 
   const data = await res.json();
-  cachedToken = {
+  tokenCache[cacheKey] = {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
   };
 
-  return cachedToken.token;
+  return tokenCache[cacheKey].token;
 }
 
 // ── Create Order ─────────────────────────────────────
@@ -63,7 +103,7 @@ export interface CreatePayPalOrderInput {
 export async function createPayPalOrder(
   input: CreatePayPalOrderInput
 ): Promise<{ paypalOrderId: string; approveUrl: string }> {
-  const { baseUrl } = getConfig();
+  const { baseUrl } = await getConfig();
   const token = await getAccessToken();
 
   const body = {
@@ -132,7 +172,7 @@ export interface CaptureResult {
 export async function capturePayPalOrder(
   paypalOrderId: string
 ): Promise<CaptureResult> {
-  const { baseUrl } = getConfig();
+  const { baseUrl } = await getConfig();
   const token = await getAccessToken();
 
   const res = await fetch(
@@ -173,7 +213,7 @@ export async function verifyWebhookSignature(
   headers: Record<string, string>,
   body: string
 ): Promise<boolean> {
-  const { baseUrl, webhookId } = getConfig();
+  const { baseUrl, webhookId } = await getConfig();
   if (!webhookId) return false;
 
   const token = await getAccessToken();

@@ -401,6 +401,11 @@ export async function generateEvidencePdf(
   const emailEvents = order.events.filter((e) => e.eventType.startsWith("email."));
   const adminEvents = order.events.filter((e) => e.eventType.startsWith("admin."));
   const paymentCapturedEvent = order.events.find((e) => e.eventType === "payment.captured");
+  const paymentRecordedEvent = order.events.find((e) => e.eventType === "payment.recorded");
+  const redeemCompletedEvent = order.events.find((e) => e.eventType === "redeem.completed");
+  const orderCreatedEvent = order.events.find((e) => e.eventType === "order.created");
+  const isManualSale = !!(paymentRecordedEvent || (orderCreatedEvent && (orderCreatedEvent.eventData as Record<string, unknown>)?.source === "manual_sale"));
+  const manualPaymentData = paymentRecordedEvent ? paymentRecordedEvent.eventData as Record<string, unknown> : null;
 
   // ── Header ──
   w.header("EVIDENCE PACK - CHARGEBACK DEFENSE", `Document ${documentId} | Generated ${fmtDate(now)} by ${generatedBy}`);
@@ -443,7 +448,16 @@ export async function generateEvidencePdf(
       }
     }
 
-    const summary = `Payment was completed via PayPal (status: ${ppStatus}). ` +
+    let paymentSummary: string;
+    if (isManualSale) {
+      const method = manualPaymentData?.method ? String(manualPaymentData.method) : "manual";
+      const ref = manualPaymentData?.paymentRef ? ` (ref: ${String(manualPaymentData.paymentRef)})` : "";
+      paymentSummary = `Payment was recorded via ${method === "paypal_invoice" ? "PayPal Invoice" : "manual payment"}${ref}.`;
+    } else {
+      paymentSummary = `Payment was completed via PayPal (status: ${ppStatus}).`;
+    }
+
+    const summary = `${paymentSummary} ` +
       `The buyer accepted the Terms of Service (${tosVer}, hash ${tosHash}...) before payment. ` +
       `Digital delivery was ${deliveryDone ? "completed" : "NOT completed"} via secure download token and license issuance` +
       `${deliveryDone ? ", and the file was successfully downloaded (download.completed)" : ""}. ` +
@@ -556,42 +570,62 @@ export async function generateEvidencePdf(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // SECTION F: PAYPAL PAYMENT DETAILS (Human Readable Extract)
+  // SECTION F: PAYMENT DETAILS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  w.sectionTitle("5. PAYPAL PAYMENT DETAILS (Extract)");
-  w.kv("PayPal Order ID", order.paypalOrderId || "N/A");
-  w.kv("PayPal Capture ID", order.paypalCaptureId || "N/A");
-  w.kv("PayPal Status", order.paypalStatus || "N/A");
-  w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
-  w.kv("Payer ID", order.paypalPayerId || "N/A");
-  w.kv("Payer Email", order.paypalPayerEmail || "N/A");
-  w.kv("Payer Name", order.paypalPayerName || "N/A");
-
-  // Extract additional fields from rawCapture if available
-  const raw = order.paypalRawCapture as Record<string, unknown> | null;
-  const sandboxFallback = "Not provided by PayPal in this environment (sandbox)";
-  if (raw) {
-    w.kv("PayPal Create Time", raw.create_time ? safeStr(raw.create_time) : sandboxFallback);
-    w.kv("PayPal Update Time", raw.update_time ? safeStr(raw.update_time) : sandboxFallback);
-    // Try to find merchant info
-    const pu = raw.purchase_units as Array<Record<string, unknown>> | undefined;
-    if (pu && pu[0]) {
-      const payee = pu[0].payee as Record<string, unknown> | undefined;
-      if (payee) {
-        w.kv("Merchant Email", safeStr(payee.email_address));
-        w.kv("Merchant ID", safeStr(payee.merchant_id));
-      }
+  if (isManualSale) {
+    w.sectionTitle("5. PAYMENT DETAILS (Manual Sale / Invoice)");
+    const method = manualPaymentData?.method ? String(manualPaymentData.method) : "manual";
+    w.kv("Payment Method", method === "paypal_invoice" ? "PayPal Invoice" : "Manual Payment");
+    w.kv("Payment Reference", manualPaymentData?.paymentRef ? String(manualPaymentData.paymentRef) : "N/A");
+    w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
+    w.kv("Manual Sale ID", manualPaymentData?.manualSaleId ? String(manualPaymentData.manualSaleId) : "N/A");
+    if (paymentRecordedEvent) {
+      w.kv("Payment Recorded At", fmtDate(paymentRecordedEvent.createdAt));
+      w.kv("Recorded IP", paymentRecordedEvent.ipAddress || "N/A");
     }
+    if (redeemCompletedEvent) {
+      w.kv("Redeem Completed At", fmtDate(redeemCompletedEvent.createdAt));
+      w.kv("Redeem IP", redeemCompletedEvent.ipAddress || "N/A");
+      w.kv("Redeem UA", truncate(redeemCompletedEvent.userAgent || "N/A", 80));
+    }
+    w.note(
+      "This order was created via the Manual Sales / Redeem Link flow. Payment was processed outside the standard checkout (e.g. PayPal Invoice). The buyer redeemed a secure link, accepted Terms of Service, and activated the license within the store.",
+      C.warningBg, rgb(0.573, 0.251, 0.055), C.warning
+    );
   } else {
-    w.kv("PayPal Create Time", sandboxFallback);
-    w.kv("PayPal Update Time", sandboxFallback);
-  }
+    w.sectionTitle("5. PAYPAL PAYMENT DETAILS (Extract)");
+    w.kv("PayPal Order ID", order.paypalOrderId || "N/A");
+    w.kv("PayPal Capture ID", order.paypalCaptureId || "N/A");
+    w.kv("PayPal Status", order.paypalStatus || "N/A");
+    w.kv("Amount", `$${String(order.amountUsd)} ${order.currency}`);
+    w.kv("Payer ID", order.paypalPayerId || "N/A");
+    w.kv("Payer Email", order.paypalPayerEmail || "N/A");
+    w.kv("Payer Name", order.paypalPayerName || "N/A");
 
-  // Webhook vs API verification
-  if (order.paypalWebhookReceivedAt) {
-    w.kv("Verification", `Webhook received at ${fmtDate(order.paypalWebhookReceivedAt)}`);
-  } else {
-    w.kv("Verification", "Capture verified via PayPal Orders API (no webhook)");
+    // Extract additional fields from rawCapture if available
+    const raw = order.paypalRawCapture as Record<string, unknown> | null;
+    const sandboxFallback = "Not provided by PayPal in this environment (sandbox)";
+    if (raw) {
+      w.kv("PayPal Create Time", raw.create_time ? safeStr(raw.create_time) : sandboxFallback);
+      w.kv("PayPal Update Time", raw.update_time ? safeStr(raw.update_time) : sandboxFallback);
+      const pu = raw.purchase_units as Array<Record<string, unknown>> | undefined;
+      if (pu && pu[0]) {
+        const payee = pu[0].payee as Record<string, unknown> | undefined;
+        if (payee) {
+          w.kv("Merchant Email", safeStr(payee.email_address));
+          w.kv("Merchant ID", safeStr(payee.merchant_id));
+        }
+      }
+    } else {
+      w.kv("PayPal Create Time", sandboxFallback);
+      w.kv("PayPal Update Time", sandboxFallback);
+    }
+
+    if (order.paypalWebhookReceivedAt) {
+      w.kv("Verification", `Webhook received at ${fmtDate(order.paypalWebhookReceivedAt)}`);
+    } else {
+      w.kv("Verification", "Capture verified via PayPal Orders API (no webhook)");
+    }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

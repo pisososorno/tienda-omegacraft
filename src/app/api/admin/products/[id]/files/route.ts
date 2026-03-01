@@ -5,6 +5,10 @@ import { withAdminAuth, isAuthError, ROLES_ALL, verifyProductOwnership, isSeller
 import { uploadFile, deleteFile } from "@/lib/storage";
 import crypto from "crypto";
 
+// Allow large file uploads (Next.js App Router defaults to ~4MB)
+export const runtime = "nodejs";
+export const maxDuration = 300; // 5 minutes for large uploads
+
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 const ALLOWED_EXTENSIONS = [
   ".zip", ".rar", ".7z", ".tar.gz", ".gz",

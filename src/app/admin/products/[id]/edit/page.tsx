@@ -62,6 +62,8 @@ export default function EditProductPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
+  const [uploadFileName, setUploadFileName] = useState("");
   const [error, setError] = useState("");
   const [images, setImages] = useState<ProductImage[]>([]);
   const [files, setFiles] = useState<ProductFile[]>([]);
@@ -159,29 +161,65 @@ export default function EditProductPage() {
     }
   }
 
+  function uploadFileWithProgress(file: File, url: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(pct);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            reject(new Error(data.error || `Error ${xhr.status}`));
+          } catch {
+            reject(new Error(`Error ${xhr.status}`));
+          }
+        }
+      });
+
+      xhr.addEventListener("error", () => reject(new Error("Error de red al subir archivo")));
+      xhr.addEventListener("timeout", () => reject(new Error("Tiempo de espera agotado")));
+      xhr.timeout = 600000; // 10 minutes
+
+      const formData = new FormData();
+      formData.append("file", file);
+      xhr.send(formData);
+    });
+  }
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
 
     setUploadingFile(true);
+    setUploadProgress(0);
     setError("");
     try {
       for (let i = 0; i < fileList.length; i++) {
-        const formData = new FormData();
-        formData.append("file", fileList[i]);
-
-        const res = await fetch(`/api/admin/products/${params.id}/files`, {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Error al subir archivo");
+        setUploadFileName(fileList[i].name);
+        setUploadProgress(0);
+        await uploadFileWithProgress(
+          fileList[i],
+          `/api/admin/products/${params.id}/files`
+        );
       }
+      setUploadProgress(100);
       fetchProduct();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Error al subir archivo");
     } finally {
       setUploadingFile(false);
+      setUploadProgress(0);
+      setUploadFileName("");
       e.target.value = "";
     }
   }
@@ -418,13 +456,38 @@ export default function EditProductPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {files.length === 0 ? (
+              {/* Upload progress bar */}
+              {uploadingFile && (
+                <div className="mb-4 p-3 rounded-lg border bg-indigo-50/50">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium text-indigo-700 truncate max-w-[70%]">
+                      {uploadFileName || "Subiendo archivo..."}
+                    </span>
+                    <span className="text-sm font-bold text-indigo-700">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-indigo-100 rounded-full h-2.5">
+                    <div
+                      className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-indigo-500 mt-1.5">
+                    {uploadProgress < 100
+                      ? "Subiendo al servidor... no cierres esta página."
+                      : "Procesando archivo..."}
+                  </p>
+                </div>
+              )}
+
+              {files.length === 0 && !uploadingFile ? (
                 <div className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground">
                   <FileArchive className="h-10 w-10 mx-auto mb-3 opacity-50" />
                   <p className="text-sm font-medium">No hay archivos de descarga</p>
                   <p className="text-xs mt-1">Sube el archivo ZIP, schematic, JAR o cualquier archivo que el comprador recibirá al pagar.</p>
                 </div>
-              ) : (
+              ) : files.length > 0 ? (
                 <div className="space-y-2">
                   {files.map((f) => (
                     <div key={f.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
@@ -449,7 +512,7 @@ export default function EditProductPage() {
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
               <p className="text-xs text-muted-foreground mt-3">
                 Formatos: ZIP, RAR, JAR, schematic, SCHEM, YML, JSON, etc. Máx 500MB por archivo.
                 Este es el archivo que el comprador descarga después de pagar.

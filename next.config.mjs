@@ -2,6 +2,11 @@
 const nextConfig = {
   output: "standalone",
   serverExternalPackages: ["archiver"],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "500mb",
+    },
+  },
   images: {
     remotePatterns: [
       {
@@ -13,6 +18,7 @@ const nextConfig = {
   async headers() {
     return [
       { source: "/admin/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/redeem/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/my-downloads", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/checkout/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/api/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },

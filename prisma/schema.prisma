@@ -90,8 +90,9 @@ model Product {
   seller   SellerProfile? @relation(fields: [sellerId], references: [id])
   files    ProductFile[]
   images   ProductImage[]
-  orders   Order[]
-  licenses License[]
+  orders      Order[]
+  licenses    License[]
+  manualSales ManualSale[]
 
   @@index([category])
   @@index([slug])
@@ -214,6 +215,7 @@ model Order {
   license        License?
   snapshots      OrderSnapshot[]
   deliveryStages DeliveryStage[]
+  manualSale      ManualSale?
 
   @@index([buyerEmail])
   @@index([paypalOrderId])
@@ -354,6 +356,68 @@ model WebhookLog {
   @@map("webhook_logs")
 }
 
+// ── MANUAL SALES (PayPal Invoice / Direct) ────────────
+
+enum ManualSaleStatus {
+  draft
+  sent
+  paid
+  redeemed
+  expired
+  canceled
+}
+
+model ManualSale {
+  id                  String           @id @default(uuid())
+  status              ManualSaleStatus @default(draft)
+
+  // Buyer info
+  buyerEmail          String           @map("buyer_email") @db.VarChar(500)
+  buyerEmailMasked    String           @map("buyer_email_masked") @db.VarChar(500)
+  buyerName           String?          @map("buyer_name") @db.VarChar(300)
+
+  // Product & pricing
+  productId           String           @map("product_id")
+  amount              Decimal          @db.Decimal(10, 2)
+  currency            String           @default("USD") @db.VarChar(3)
+
+  // Payment info
+  paymentMethod       String           @default("paypal_invoice") @map("payment_method") @db.VarChar(50) // paypal_invoice | manual
+  paymentRef          String?          @map("payment_ref") @db.VarChar(500) // invoice ID or external ref
+  paidAt              DateTime?        @map("paid_at") @db.Timestamptz
+  requirePaymentFirst Boolean          @default(false) @map("require_payment_first")
+  notes               String?          @db.Text
+
+  // Redeem token (stored as hash only)
+  redeemTokenHash     String           @map("redeem_token_hash") @db.VarChar(64)
+  redeemExpiresAt     DateTime         @map("redeem_expires_at") @db.Timestamptz
+  maxRedeems          Int              @default(1) @map("max_redeems")
+  redeemCount         Int              @default(0) @map("redeem_count")
+  redeemedAt          DateTime?        @map("redeemed_at") @db.Timestamptz
+
+  // Linked order (created on successful redeem)
+  orderId             String?          @unique @map("order_id")
+
+  // Admin
+  createdByAdminId    String           @map("created_by_admin_id")
+  metadata            Json             @default("{}")
+
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  product  Product    @relation(fields: [productId], references: [id])
+  order    Order?     @relation(fields: [orderId], references: [id])
+  admin    AdminUser  @relation(fields: [createdByAdminId], references: [id])
+
+  @@index([buyerEmail])
+  @@index([status])
+  @@index([redeemTokenHash])
+  @@index([productId])
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("manual_sales")
+}
+
 // ── SITE SETTINGS (single-row config) ─────────────────────
 
 model SiteSettings {
@@ -366,6 +430,7 @@ model SiteSettings {
   heroTitle       String   @default("Plugins, Maps y Configs de calidad profesional") @map("hero_title") @db.VarChar(500)
   heroDescription String   @default("Descubre nuestra colección de productos digitales para Minecraft. Spawns, dungeons, plugins y source code — todo con entrega instantánea y soporte incluido.") @map("hero_description") @db.Text
   appearance      Json     @default("{}") // theme colors, backgrounds, etc.
+  paypalMode      String   @default("sandbox") @map("paypal_mode") @db.VarChar(10) // "sandbox" | "live"
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("site_settings")
@@ -386,6 +451,7 @@ model AdminUser {
   sellerProfile     SellerProfile?
   auditLogsAsActor  AdminAuditLog[] @relation("AuditActor")
   auditLogsAsTarget AdminAuditLog[] @relation("AuditTarget")
+  manualSales       ManualSale[]
 
   @@map("admin_users")
 }
