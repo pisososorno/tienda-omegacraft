@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import { Readable } from "stream";
 import crypto from "crypto";
 import fs from "fs";
+import fsp from "fs/promises";
 import path from "path";
+import os from "os";
 import Busboy from "busboy";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonOk } from "@/lib/api-helpers";
@@ -20,6 +22,7 @@ function logUpload(msg: string) {
 
 // Allow large file uploads
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes for large uploads
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
@@ -32,98 +35,151 @@ const ALLOWED_EXTENSIONS = [
 ];
 
 interface ParsedFile {
+  tempPath: string;      // temp file on disk (NOT in RAM)
   filename: string;
   mimeType: string;
-  buffer: Buffer;
   sha256Hash: string;
   size: number;
 }
 
 /**
- * Parse multipart form data using busboy (streaming).
- * This drains the socket continuously, preventing TCP backpressure
- * that would stall XHR upload progress events in the browser.
+ * Get the temp directory for uploads — uses UPLOADS_DIR/tmp if available,
+ * else falls back to OS temp.
+ */
+function getTempDir(): string {
+  const base = process.env.UPLOADS_DIR || os.tmpdir();
+  return path.join(base, "tmp");
+}
+
+/**
+ * Parse multipart form data using busboy.
+ * Streams the file to disk (createWriteStream) — no RAM buffer.
+ * Computes sha256 incrementally during streaming.
  */
 function parseMultipart(req: NextRequest): Promise<ParsedFile> {
   return new Promise((resolve, reject) => {
     const contentType = req.headers.get("content-type") || "";
-    logUpload(`parseMultipart START — content-type: ${contentType.substring(0, 80)}`);
+    logUpload(`parseMultipart START — content-type: ${contentType.substring(0, 100)}`);
     if (!contentType.includes("multipart/form-data")) {
       return reject(new Error("Expected multipart/form-data"));
     }
 
+    // Busboy limits: 600MB fileSize (slightly over our 500MB UI limit for safety)
     const bb = Busboy({
       headers: { "content-type": contentType },
-      limits: { fileSize: MAX_FILE_SIZE, files: 1 },
+      limits: { fileSize: 600 * 1024 * 1024, files: 1 },
     });
 
     let fileFound = false;
+    let settled = false;
+
+    function finish(err: Error): void;
+    function finish(result: ParsedFile): void;
+    function finish(errOrResult: Error | ParsedFile) {
+      if (settled) return;
+      settled = true;
+      if (errOrResult instanceof Error) reject(errOrResult);
+      else resolve(errOrResult);
+    }
 
     bb.on("file", (_fieldname: string, stream: Readable, info: { filename: string; mimeType: string }) => {
       fileFound = true;
       const { filename, mimeType } = info;
-      logUpload(`busboy FILE event: ${filename} (${mimeType})`);
-      const chunks: Buffer[] = [];
+      logUpload(`busboy FILE event: "${filename}" (${mimeType})`);
+
+      const tmpDir = getTempDir();
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tempPath = path.join(tmpDir, `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
       const hash = crypto.createHash("sha256");
+      const ws = fs.createWriteStream(tempPath);
       let size = 0;
       let chunkCount = 0;
-      let limitExceeded = false;
+      let limitHit = false;
       const startTime = Date.now();
 
+      // Handle busboy's built-in limit event (fileSize exceeded)
+      stream.on("limit", () => {
+        limitHit = true;
+        logUpload(`LIMIT_REACHED: "${filename}" at ${(size / 1024 / 1024).toFixed(1)}MB (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`);
+        ws.destroy();
+        // Clean up temp file
+        try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+        finish(new Error("FILE_TOO_LARGE"));
+      });
+
       stream.on("data", (chunk: Buffer) => {
+        if (limitHit) return;
         size += chunk.length;
         chunkCount++;
-        if (chunkCount % 100 === 0 || chunkCount <= 3) {
-          logUpload(`  chunk #${chunkCount}: +${chunk.length}B, total=${size}B (${(size / 1024 / 1024).toFixed(1)}MB)`);
+        if (chunkCount % 500 === 0 || chunkCount <= 3) {
+          logUpload(`  chunk #${chunkCount}: +${chunk.length}B, total=${(size / 1024 / 1024).toFixed(1)}MB`);
         }
+        // Secondary size guard (in case busboy limit is set higher)
         if (size > MAX_FILE_SIZE) {
-          limitExceeded = true;
+          limitHit = true;
+          logUpload(`LIMIT_REACHED (secondary): "${filename}" at ${(size / 1024 / 1024).toFixed(1)}MB`);
           stream.destroy();
+          ws.destroy();
+          try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+          finish(new Error("FILE_TOO_LARGE"));
           return;
         }
-        chunks.push(chunk);
         hash.update(chunk);
+        ws.write(chunk);
       });
 
       stream.on("end", () => {
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        logUpload(`busboy stream END: ${chunkCount} chunks, ${(size / 1024 / 1024).toFixed(1)}MB in ${elapsed}s`);
-        if (limitExceeded) {
-          return reject(new Error(`File too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB`));
-        }
-        resolve({
-          filename,
-          mimeType: mimeType || "application/octet-stream",
-          buffer: Buffer.concat(chunks),
-          sha256Hash: hash.digest("hex"),
-          size,
+        if (limitHit) return;
+        ws.end(() => {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          logUpload(`busboy stream END: ${chunkCount} chunks, ${(size / 1024 / 1024).toFixed(1)}MB in ${elapsed}s → ${tempPath}`);
+          finish({
+            tempPath,
+            filename,
+            mimeType: mimeType || "application/octet-stream",
+            sha256Hash: hash.digest("hex"),
+            size,
+          });
         });
       });
 
       stream.on("error", (err) => {
         logUpload(`busboy stream ERROR: ${err.message}`);
-        reject(err);
+        ws.destroy();
+        try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+        finish(err);
+      });
+
+      ws.on("error", (err) => {
+        logUpload(`writeStream ERROR: ${err.message}`);
+        stream.destroy();
+        try { fs.unlinkSync(tempPath); } catch { /* ignore */ }
+        finish(err);
       });
     });
 
     bb.on("error", (err: Error) => {
       logUpload(`busboy ERROR: ${err.message}`);
-      reject(err);
+      finish(err);
     });
     bb.on("close", () => {
       logUpload(`busboy CLOSE — fileFound=${fileFound}`);
-      if (!fileFound) reject(new Error("No file provided"));
+      if (!fileFound) finish(new Error("No file provided"));
     });
 
-    // Pipe the request body into busboy to start streaming
+    // Pipe the request body into busboy
     const body = req.body;
     if (!body) {
       logUpload("ERROR: No request body");
-      return reject(new Error("No request body"));
+      return finish(new Error("No request body"));
     }
     logUpload("Piping request body → busboy...");
     const nodeStream = Readable.fromWeb(body as import("stream/web").ReadableStream);
-    nodeStream.on("error", (err) => logUpload(`nodeStream ERROR: ${err.message}`));
+    nodeStream.on("error", (err) => {
+      logUpload(`nodeStream ERROR: ${err.message}`);
+      finish(err);
+    });
     nodeStream.pipe(bb);
   });
 }
@@ -169,12 +225,15 @@ export async function POST(
   if (!product) return jsonError("Product not found", 404);
   if (isSeller(auth) && product.sellerId !== auth.sellerId) return jsonError("Product not found", 404);
 
+  let tempPath: string | null = null;
+
   try {
     logUpload(`POST /files — productId=${id}, auth OK, starting parse...`);
 
-    // Stream-parse multipart data (prevents TCP backpressure → XHR progress works)
+    // Stream-parse multipart data to temp file (no RAM buffer)
     const file = await parseMultipart(req);
-    logUpload(`Parse complete: ${file.filename}, ${(file.size / 1024 / 1024).toFixed(1)}MB, hash=${file.sha256Hash.substring(0, 12)}`);
+    tempPath = file.tempPath;
+    logUpload(`Parse complete: ${file.filename}, ${(file.size / 1024 / 1024).toFixed(1)}MB, hash=${file.sha256Hash.substring(0, 12)}, temp=${tempPath}`);
 
     // Validate extension
     const ext = "." + file.filename.split(".").pop()?.toLowerCase();
@@ -188,9 +247,10 @@ export async function POST(
     const safeFilename = file.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     const storageKey = `products/${id}/${timestamp}-${safeFilename}`;
 
-    // Upload to storage (S3 or local)
+    // Upload to storage from temp file (stream — no full RAM copy)
     logUpload(`Uploading to storage: ${storageKey}...`);
-    await uploadFile(storageKey, file.buffer, file.mimeType);
+    const fileStream = fs.createReadStream(tempPath);
+    await uploadFile(storageKey, fileStream, file.mimeType);
     logUpload(`Storage upload done.`);
 
     // Count existing files for sort order
@@ -225,7 +285,20 @@ export async function POST(
     const msg = error instanceof Error ? error.message : "Error uploading file";
     logUpload(`FAIL: ${msg}`);
     console.error("[api/admin/products/files POST]", error);
+
+    // Return proper 413 for file size limit
+    if (msg === "FILE_TOO_LARGE") {
+      return Response.json(
+        { error: "File too large", maxMb: MAX_FILE_SIZE / 1024 / 1024 },
+        { status: 413 }
+      );
+    }
     return jsonError(msg, 500);
+  } finally {
+    // Always clean up temp file
+    if (tempPath) {
+      fsp.unlink(tempPath).catch(() => { /* ignore */ });
+    }
   }
 }
 

@@ -4,8 +4,9 @@ const nextConfig = {
   serverExternalPackages: ["archiver"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "500mb",
+      bodySizeLimit: "600mb",
     },
+    proxyClientMaxBodySize: "600mb",
   },
   images: {
     remotePatterns: [
